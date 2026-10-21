@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { exec, execFile } from 'child_process';
 import util from 'util';
+import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import ffmpegPath from 'ffmpeg-static';
@@ -37,6 +38,14 @@ if (!fs.existsSync(VIDEOS_STORAGE_DIR)) {
 
 app.use(express.json({ limit: '60mb' }));
 app.use(express.urlencoded({ extended: true, limit: '60mb' }));
+app.use((req, res, next) => {
+  const cookieHeader = req.headers.cookie || '';
+  (req as Request & { cookies: Record<string, string> }).cookies = Object.fromEntries(cookieHeader.split(';').filter(Boolean).map((part) => {
+    const [key, ...value] = part.trim().split('=');
+    return [key, decodeURIComponent(value.join('='))];
+  }));
+  next();
+});
 
 // -----------------------------------------------------------------------------
 // In-Memory Database & State (Simulating Supabase/PostgreSQL backend store)
@@ -83,32 +92,59 @@ interface Subscription {
   createdAt: string;
 }
 
-const usersStore: Map<string, UserProfile> = new Map([
-  [
-    'user_default_1',
-    {
-      id: 'user_default_1',
-      email: 'animeemcristo@gmail.com',
-      name: 'Usuário',
-      role: 'admin',
-      plan: 'premium',
-      createdAt: new Date().toISOString(),
-    },
-  ],
-]);
-
+const usersStore: Map<string, UserProfile> = new Map();
 const usageStore: Map<string, UserUsage> = new Map();
 const subscriptionsStore: Map<string, Subscription> = new Map();
-const auditLogsStore: AuditLog[] = [
-  {
-    id: 'log_init',
-    userId: 'user_default_1',
-    action: 'SYSTEM_BOOT',
-    resourceType: 'server',
-    metadata: { version: '1.0.0', status: 'ready', mode: 'real_data_only' },
-    timestamp: new Date().toISOString(),
-  },
-];
+const auditLogsStore: AuditLog[] = [];
+
+const ADMIN_EMAIL = 'j14menez@mail.com';
+const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH;
+const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET;
+const ADMIN_COOKIE = 'planilha_admin_session';
+
+function guestProfile(): UserProfile {
+  return { id: 'anonymous', email: '', name: 'Visitante', role: 'user', plan: 'free', createdAt: new Date().toISOString() };
+}
+
+function safeEqual(a: string, b: string) {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function verifyPassword(password: string, encoded: string) {
+  const [salt, expected] = encoded.split(':');
+  if (!salt || !expected) return false;
+  const actual = crypto.scryptSync(password, salt, 64).toString('hex');
+  return safeEqual(actual, expected);
+}
+
+function createAdminSession() {
+  if (!ADMIN_SESSION_SECRET) return null;
+  const payload = `${ADMIN_EMAIL}.${Date.now() + 8 * 60 * 60 * 1000}`;
+  const signature = crypto.createHmac('sha256', ADMIN_SESSION_SECRET).update(payload).digest('hex');
+  return Buffer.from(`${payload}.${signature}`).toString('base64url');
+}
+
+function isAdminRequest(req: Request) {
+  if (!ADMIN_SESSION_SECRET) return false;
+  const token = req.cookies?.[ADMIN_COOKIE];
+  if (!token) return false;
+  try {
+    const decoded = Buffer.from(token, 'base64url').toString('utf8');
+    const [email, expires, signature] = decoded.split('.');
+    const payload = `${email}.${expires}`;
+    return email === ADMIN_EMAIL && Number(expires) > Date.now() && safeEqual(
+      signature || '',
+      crypto.createHmac('sha256', ADMIN_SESSION_SECRET).update(payload).digest('hex'),
+    );
+  } catch { return false; }
+}
+
+function requireAdmin(req: Request, res: Response, next: () => void) {
+  if (!isAdminRequest(req)) return res.status(401).json({ error: 'Autenticação administrativa necessária.' });
+  next();
+}
 
 // Helper to get or init current month usage
 function getUsage(userId: string): UserUsage {
@@ -235,7 +271,7 @@ function syncVideoStorageFromDisk() {
         } else {
           videoHistoryStore.unshift({
             id,
-            userId: 'user_default_1',
+            userId: 'anonymous',
             title: id.includes('gtlooz') ? 'Relatório de Indicadores Executivo' : 'Apresentação Executiva',
             createdAt: info.mtime.toISOString(),
             durationSeconds: 15,
@@ -297,9 +333,31 @@ app.get('/api/health', (req: Request, res: Response) => {
 });
 
 // 2. Auth / Current Profile
+app.post('/api/admin/login', (req: Request, res: Response) => {
+  const { email, password } = req.body || {};
+  if (!ADMIN_PASSWORD_HASH || !ADMIN_SESSION_SECRET) {
+    return res.status(503).json({ error: 'Autenticação administrativa não configurada no servidor.' });
+  }
+  if (email !== ADMIN_EMAIL || typeof password !== 'string' || !verifyPassword(password, ADMIN_PASSWORD_HASH)) {
+    return res.status(401).json({ error: 'E-mail ou senha inválidos.' });
+  }
+  const token = createAdminSession();
+  res.setHeader('Set-Cookie', `${ADMIN_COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${isProduction ? '; Secure' : ''}`);
+  res.json({ authenticated: true, email: ADMIN_EMAIL });
+});
+
+app.post('/api/admin/logout', (req: Request, res: Response) => {
+  res.setHeader('Set-Cookie', `${ADMIN_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${isProduction ? '; Secure' : ''}`);
+  res.json({ authenticated: false });
+});
+
+app.get('/api/admin/session', (req: Request, res: Response) => {
+  res.json({ authenticated: isAdminRequest(req), email: isAdminRequest(req) ? ADMIN_EMAIL : null });
+});
+
 app.get('/api/auth/me', (req: Request, res: Response) => {
-  const userId = (req.headers['x-user-id'] as string) || 'user_default_1';
-  const profile = usersStore.get(userId) || usersStore.get('user_default_1')!;
+  const userId = (req.headers['x-user-id'] as string) || 'anonymous';
+  const profile = usersStore.get(userId) || guestProfile();
   const usage = getUsage(profile.id);
 
   res.json({
@@ -320,8 +378,8 @@ app.get('/api/auth/me', (req: Request, res: Response) => {
 
 // 3. User Limits & Usage consumption check
 app.post('/api/user/consume', (req: Request, res: Response) => {
-  const { userId = 'user_default_1', action } = req.body;
-  const user = usersStore.get(userId) || usersStore.get('user_default_1')!;
+  const { userId = 'anonymous', action } = req.body;
+  const user = usersStore.get(userId) || guestProfile();
   const usage = getUsage(user.id);
 
   const limits = {
@@ -367,13 +425,13 @@ app.post('/api/user/consume', (req: Request, res: Response) => {
 
 // 4. Analista IA: Natural Language Q&A with Spreadsheet Data (Strict data minimization)
 app.post('/api/ai/ask', async (req: Request, res: Response) => {
-  const { question, summaryMetrics, columnsMetadata, sampleAggregations, userId = 'user_default_1' } = req.body;
+  const { question, summaryMetrics, columnsMetadata, sampleAggregations, userId = 'anonymous' } = req.body;
 
   if (!question) {
     return res.status(400).json({ error: 'A pergunta é obrigatória.' });
   }
 
-  const user = usersStore.get(userId) || usersStore.get('user_default_1')!;
+  const user = usersStore.get(userId) || guestProfile();
   const usage = getUsage(user.id);
   const maxAi = user.plan === 'premium' ? 200 : 5;
 
@@ -584,8 +642,8 @@ app.post('/api/ai/suggest-charts', (req: Request, res: Response) => {
 
 // 6. Mercado Pago - Checkout Preference / Subscription Creation
 app.post('/api/mercadopago/preference', async (req: Request, res: Response) => {
-  const { userId = 'user_default_1', returnUrl } = req.body;
-  const user = usersStore.get(userId) || usersStore.get('user_default_1')!;
+  const { userId = 'anonymous', returnUrl } = req.body;
+  const user = usersStore.get(userId) || guestProfile();
 
   const mpToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
   const price = 29.9; // R$ 29,90 por mês
@@ -646,15 +704,7 @@ app.post('/api/mercadopago/preference', async (req: Request, res: Response) => {
     }
   }
 
-  // Standard sandbox / preview response for tests
-  const simulatedPrefId = `PREF_MP_${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
-  res.json({
-    preferenceId: simulatedPrefId,
-    initPoint: `https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=${simulatedPrefId}`,
-    sandboxInitPoint: `https://sandbox.mercadopago.com.br/checkout/v1/redirect?pref_id=${simulatedPrefId}`,
-    mode: 'test_sandbox',
-    message: 'Mercado Pago pronto em modo Sandbox de Testes. Configure MERCADOPAGO_ACCESS_TOKEN para pagamentos reais.',
-  });
+  return res.status(503).json({ error: 'Mercado Pago não está configurado para pagamentos reais.' });
 });
 
 // 7. Mercado Pago - Webhook Handler (Idempotent processing with signature validation)
@@ -662,10 +712,14 @@ app.post('/api/mercadopago/webhook', (req: Request, res: Response) => {
   const { type, data, action } = req.body;
   const signature = req.headers['x-signature'] as string;
 
-  console.log(`[MercadoPago Webhook] Received notification type=${type} action=${action}`, data);
+  if (!process.env.MERCADOPAGO_WEBHOOK_SECRET || !signature || !data?.id) {
+    return res.status(401).json({ error: 'Webhook não autenticado.' });
+  }
 
-  const eventId = data?.id || `evt_${Date.now()}`;
-  const userId = req.body.userId || 'user_default_1';
+  console.log(`[MercadoPago Webhook] Received notification type=${type} action=${action}`);
+
+  const eventId = String(data.id);
+  const userId = req.body.external_reference;
 
   // Audit log the incoming webhook
   auditLogsStore.unshift({
@@ -702,7 +756,7 @@ app.post('/api/mercadopago/webhook', (req: Request, res: Response) => {
 });
 
 // 8. Admin Panel: Overview & Metrics
-app.get('/api/admin/metrics', (req: Request, res: Response) => {
+app.get('/api/admin/metrics', requireAdmin, (req: Request, res: Response) => {
   const allUsers = Array.from(usersStore.values());
   const premiumCount = allUsers.filter(u => u.plan === 'premium').length;
   const freeCount = allUsers.length - premiumCount;
@@ -732,7 +786,7 @@ app.get('/api/admin/metrics', (req: Request, res: Response) => {
 });
 
 // 9. Admin Panel: Change user plan
-app.post('/api/admin/update-plan', (req: Request, res: Response) => {
+app.post('/api/admin/update-plan', requireAdmin, (req: Request, res: Response) => {
   const { targetUserId, newPlan } = req.body;
   if (!targetUserId || !['free', 'premium'].includes(newPlan)) {
     return res.status(400).json({ error: 'Dados inválidos.' });
@@ -764,8 +818,8 @@ app.post('/api/admin/update-plan', (req: Request, res: Response) => {
 
 // 10.1 Video Usage Quota Check
 app.get('/api/video/usage', (req: Request, res: Response) => {
-  const userId = (req.headers['x-user-id'] as string) || 'user_default_1';
-  const user = usersStore.get(userId) || usersStore.get('user_default_1')!;
+  const userId = (req.headers['x-user-id'] as string) || 'anonymous';
+  const user = usersStore.get(userId) || guestProfile();
   const usage = getUsage(user.id);
 
   const limit = user.plan === 'premium' ? 10 : 0;
@@ -783,8 +837,8 @@ app.get('/api/video/usage', (req: Request, res: Response) => {
 
 // 10.2 Create Video Export Job (Validates Session & Plan)
 app.post('/api/video/create-job', (req: Request, res: Response) => {
-  const { title = 'Apresentação Executiva', format = 'mp4', userId = 'user_default_1', durationSeconds = 15 } = req.body;
-  const user = usersStore.get(userId) || usersStore.get('user_default_1')!;
+  const { title = 'Apresentação Executiva', format = 'mp4', userId = 'anonymous', durationSeconds = 15 } = req.body;
+  const user = usersStore.get(userId) || guestProfile();
   const usage = getUsage(user.id);
 
   // 1. Strict Server-Side Validation: Premium Only
@@ -1016,7 +1070,7 @@ app.post('/api/video/render-stream', async (req: Request, res: Response) => {
   const format = ((req.query.format as string) || (req.headers['x-video-format'] as string) || 'mp4') as string;
   const rawTitle = (req.query.title as string) || (req.headers['x-video-title'] as string) || 'Apresentação Executiva';
   const title = decodeURIComponent(rawTitle);
-  const userId = (req.headers['x-user-id'] as string) || (req.query.userId as string) || 'user_default_1';
+  const userId = (req.headers['x-user-id'] as string) || (req.query.userId as string) || 'anonymous';
 
   if (!jobId) {
     return res.status(400).json({ error: 'Job ID é obrigatório.' });
@@ -1027,7 +1081,7 @@ app.post('/api/video/render-stream', async (req: Request, res: Response) => {
     return res.status(404).json({ error: 'Tarefa de vídeo não encontrada.' });
   }
 
-  const user = usersStore.get(userId) || usersStore.get('user_default_1')!;
+  const user = usersStore.get(userId) || guestProfile();
   const usage = getUsage(user.id);
 
   if (user.plan !== 'premium') {
@@ -1060,7 +1114,7 @@ app.post('/api/video/render-stream', async (req: Request, res: Response) => {
 
 // 10.3b Render & Process Video (JSON Base64 Fallback)
 app.post('/api/video/render', async (req: Request, res: Response) => {
-  const { jobId, videoBase64, format = 'mp4', title = 'Apresentação Executiva', userId = 'user_default_1' } = req.body || {};
+  const { jobId, videoBase64, format = 'mp4', title = 'Apresentação Executiva', userId = 'anonymous' } = req.body || {};
 
   if (!jobId || !videoBase64) {
     return res.status(400).json({ error: 'Job ID e stream de vídeo são obrigatórios.' });
@@ -1071,7 +1125,7 @@ app.post('/api/video/render', async (req: Request, res: Response) => {
     return res.status(404).json({ error: 'Tarefa de vídeo não encontrada.' });
   }
 
-  const user = usersStore.get(userId) || usersStore.get('user_default_1')!;
+  const user = usersStore.get(userId) || guestProfile();
   const usage = getUsage(user.id);
 
   // Validate Premium plan again on render
@@ -1259,7 +1313,7 @@ app.get('/api/video/stream/:id', (req: Request, res: Response) => {
 
 // 10.7 User Video History ("Meus Vídeos")
 app.get('/api/video/history', (req: Request, res: Response) => {
-  const userId = (req.headers['x-user-id'] as string) || 'user_default_1';
+  const userId = (req.headers['x-user-id'] as string) || 'anonymous';
   syncVideoStorageFromDisk();
   const history = videoHistoryStore.filter((v) => v.userId === userId || !v.userId);
   res.json({ history });
@@ -1269,7 +1323,7 @@ app.get('/api/video/history', (req: Request, res: Response) => {
 app.delete('/api/video/history/:id', (req: Request, res: Response) => {
   const rawId = req.params.id;
   const cleanId = rawId.replace(/\.(mp4|webm)$/, '');
-  const userId = (req.headers['x-user-id'] as string) || 'user_default_1';
+  const userId = (req.headers['x-user-id'] as string) || 'anonymous';
 
   const index = videoHistoryStore.findIndex((v) => v.id === cleanId && (v.userId === userId || !v.userId));
   if (index !== -1) {

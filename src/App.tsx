@@ -71,16 +71,16 @@ export default function App() {
 
   // User Profile & Limits
   const [userProfile, setUserProfile] = useState<UserProfile>({
-    id: 'user_default_1',
-    email: 'animeemcristo@gmail.com',
-    name: 'Usuário',
-    role: 'admin',
-    plan: 'premium',
+    id: 'anonymous',
+    email: '',
+    name: 'Visitante',
+    role: 'user',
+    plan: 'free',
     createdAt: new Date().toISOString(),
   });
 
   const [userUsage, setUserUsage] = useState<UserUsage>({
-    userId: 'user_default_1',
+    userId: 'anonymous',
     period: new Date().toISOString().slice(0, 7),
     importsCount: 0,
     aiQueriesCount: 0,

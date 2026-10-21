@@ -27,9 +27,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
   const [loading, setLoading] = useState(true);
   const [updatingUser, setUpdatingUser] = useState<string | null>(null);
 
-  // Webhook Simulator State
-  const [simulatingWebhook, setSimulatingWebhook] = useState(false);
-  const [webhookStatus, setWebhookStatus] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const fetchAdminData = async () => {
     setLoading(true);
@@ -62,37 +60,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
         await fetchAdminData();
       }
     } catch (e: any) {
-      setWebhookStatus('Erro ao atualizar plano: ' + e.message);
+      setStatusMessage('Erro ao atualizar plano: ' + e.message);
     } finally {
       setUpdatingUser(null);
-    }
-  };
-
-  const handleTestWebhook = async () => {
-    setSimulatingWebhook(true);
-    setWebhookStatus(null);
-    try {
-      const res = await fetch('/api/mercadopago/webhook', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-signature': 'ts=1710000000,v1=simulated_hmac_sha256',
-        },
-        body: JSON.stringify({
-          type: 'payment',
-          action: 'payment.updated',
-          status: 'approved',
-          userId: 'user_free_demo',
-          data: { id: `sim_pay_${Date.now()}` },
-        }),
-      });
-      const data = await res.json();
-      setWebhookStatus(`Webhook recebido com sucesso (ID: ${data.eventId})! Usuário atualizado para Premium.`);
-      await fetchAdminData();
-    } catch (err: any) {
-      setWebhookStatus('Falha ao simular webhook: ' + err.message);
-    } finally {
-      setSimulatingWebhook(false);
     }
   };
 
@@ -186,33 +156,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
               </div>
             </div>
           )}
-
-          {/* Webhook & Integration Testing Tool */}
-          <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 uppercase text-[11px]">
-                <Terminal className="w-4 h-4 text-blue-600" />
-                Simulador de Webhooks & Integração Mercado Pago
-              </span>
-              <button
-                onClick={handleTestWebhook}
-                disabled={simulatingWebhook}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold flex items-center gap-1.5 shadow-xs"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${simulatingWebhook ? 'animate-spin' : ''}`} />
-                Disparar Webhook de Teste (payment.updated)
-              </button>
-            </div>
-            <p className="text-slate-500 text-[11px]">
-              Testa o endpoint <code className="bg-slate-200 dark:bg-slate-700 px-1 py-0.5 rounded-sm">/api/mercadopago/webhook</code> validando assinatura HMAC, idempotência e atualização de plano no banco de dados.
-            </p>
-            {webhookStatus && (
-              <div className="p-2.5 bg-emerald-50 text-emerald-800 rounded-lg text-[11px] flex items-center gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                <span>{webhookStatus}</span>
-              </div>
-            )}
-          </div>
 
           {/* Users Table */}
           <div className="space-y-3">

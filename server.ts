@@ -10,19 +10,20 @@ import { GoogleGenAI } from '@google/genai';
 import ffmpegPath from 'ffmpeg-static';
 import ffprobePath from 'ffprobe-static';
 
+dotenv.config();
+
 const execAsync = util.promisify(exec);
 const execFileAsync = util.promisify(execFile);
-// ffmpeg-static is bundled with the app; never depend on a system-level `ffmpeg`.
-const FFMPEG_PATH = ffmpegPath || process.env.FFMPEG_PATH;
-const FFPROBE_PATH = ffprobePath.path || process.env.FFPROBE_PATH;
+// Os binários são resolvidos pelo pacote antes de qualquer pipeline; nunca dependemos do PATH do host.
+const FFMPEG_PATH = process.env.FFMPEG_PATH || ffmpegPath;
+const FFPROBE_PATH = process.env.FFPROBE_PATH || ffprobePath.path;
+
 const FFMPEG_BIN = FFMPEG_PATH ? JSON.stringify(FFMPEG_PATH) : '';
 const FFPROBE_BIN = FFPROBE_PATH ? JSON.stringify(FFPROBE_PATH) : '';
 
 if (!FFMPEG_PATH || !FFPROBE_PATH) {
-  console.error('[Video Pipeline] FFmpeg/FFprobe executable is unavailable. Install ffmpeg-static and ffprobe-static or configure FFMPEG_PATH/FFPROBE_PATH.');
+  console.error('[Video Pipeline] FFmpeg/FFprobe indisponível. Verifique ffmpeg-static, ffprobe-static ou FFMPEG_PATH/FFPROBE_PATH.');
 }
-
-dotenv.config();
 
 const app = express();
 const portArgIndex = process.argv.indexOf('--port');
@@ -97,10 +98,21 @@ const usageStore: Map<string, UserUsage> = new Map();
 const subscriptionsStore: Map<string, Subscription> = new Map();
 const auditLogsStore: AuditLog[] = [];
 
-const ADMIN_EMAIL = 'j14menez@mail.com';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'j14menez@gmail.com';
 const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH;
 const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET;
 const ADMIN_COOKIE = 'planilha_admin_session';
+const adminLoginAttempts = new Map<string, { count: number; resetAt: number }>();
+
+function isLoginRateLimited(ip: string) {
+  const now = Date.now();
+  const current = adminLoginAttempts.get(ip);
+  if (!current || current.resetAt <= now) {
+    adminLoginAttempts.set(ip, { count: 0, resetAt: now + 15 * 60 * 1000 });
+    return false;
+  }
+  return current.count >= 5;
+}
 
 function guestProfile(): UserProfile {
   return { id: 'anonymous', email: '', name: 'Visitante', role: 'user', plan: 'free', createdAt: new Date().toISOString() };
@@ -335,19 +347,26 @@ app.get('/api/health', (req: Request, res: Response) => {
 // 2. Auth / Current Profile
 app.post('/api/admin/login', (req: Request, res: Response) => {
   const { email, password } = req.body || {};
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  if (isLoginRateLimited(ip)) {
+    return res.status(429).json({ error: 'Muitas tentativas. Tente novamente mais tarde.' });
+  }
   if (!ADMIN_PASSWORD_HASH || !ADMIN_SESSION_SECRET) {
     return res.status(503).json({ error: 'Autenticação administrativa não configurada no servidor.' });
   }
   if (email !== ADMIN_EMAIL || typeof password !== 'string' || !verifyPassword(password, ADMIN_PASSWORD_HASH)) {
+    const current = adminLoginAttempts.get(ip);
+    if (current) current.count += 1;
     return res.status(401).json({ error: 'E-mail ou senha inválidos.' });
   }
+  adminLoginAttempts.delete(ip);
   const token = createAdminSession();
-  res.setHeader('Set-Cookie', `${ADMIN_COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${isProduction ? '; Secure' : ''}`);
+  res.setHeader('Set-Cookie', `${ADMIN_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800${isProduction ? '; Secure' : ''}`);
   res.json({ authenticated: true, email: ADMIN_EMAIL });
 });
 
 app.post('/api/admin/logout', (req: Request, res: Response) => {
-  res.setHeader('Set-Cookie', `${ADMIN_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${isProduction ? '; Secure' : ''}`);
+  res.setHeader('Set-Cookie', `${ADMIN_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${isProduction ? '; Secure' : ''}`);
   res.json({ authenticated: false });
 });
 
@@ -950,8 +969,12 @@ async function executeFfmpegPipeline(
     }
 
     // Inspect file integrity with ffprobe
-    const probeCmd = `${FFPROBE_BIN} -v error -select_streams v:0 -show_entries stream=width,height,codec_name -show_entries format=duration -of json "${finalOutputPath}"`;
-    const { stdout: probeOutput } = await execAsync(probeCmd);
+    if (!FFPROBE_PATH) throw new Error('FFprobe não está disponível no ambiente de produção.');
+    const { stdout: probeOutput } = await execFileAsync(FFPROBE_PATH, [
+      '-v', 'error', '-select_streams', 'v:0',
+      '-show_entries', 'stream=width,height,codec_name',
+      '-show_entries', 'format=duration', '-of', 'json', finalOutputPath,
+    ], { maxBuffer: 2 * 1024 * 1024 });
     const probeData = JSON.parse(probeOutput || '{}');
 
     const stream = probeData.streams?.[0];

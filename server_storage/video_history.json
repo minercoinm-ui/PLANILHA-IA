@@ -1,0 +1,76 @@
+[
+  {
+    "id": "vid_1792526880621_gtlooz",
+    "userId": "user_default_1",
+    "title": "Relatório de Indicadores Executivo",
+    "createdAt": "2026-10-21T16:12:02.009Z",
+    "durationSeconds": 15,
+    "resolution": "1920x1080 Full HD",
+    "format": "mp4",
+    "fileSizeBytes": 2193030,
+    "downloadUrl": "/api/video/download/vid_1792526880621_gtlooz?format=mp4",
+    "mp4DownloadUrl": "/api/video/download/vid_1792526880621_gtlooz?format=mp4",
+    "webmDownloadUrl": "/api/video/download/vid_1792526880621_gtlooz?format=webm",
+    "streamUrl": "/api/video/stream/vid_1792526880621_gtlooz",
+    "availableFormats": [
+      "mp4"
+    ],
+    "status": "completed"
+  },
+  {
+    "id": "vid_1792526721817_al9xbe",
+    "userId": "user_default_1",
+    "title": "Apresentação Executiva",
+    "createdAt": "2026-10-21T16:12:02.005Z",
+    "durationSeconds": 15,
+    "resolution": "1920x1080 Full HD",
+    "format": "webm",
+    "fileSizeBytes": 5589652,
+    "downloadUrl": "/api/video/download/vid_1792526721817_al9xbe?format=webm",
+    "mp4DownloadUrl": "/api/video/download/vid_1792526721817_al9xbe?format=mp4",
+    "webmDownloadUrl": "/api/video/download/vid_1792526721817_al9xbe?format=webm",
+    "streamUrl": "/api/video/stream/vid_1792526721817_al9xbe",
+    "availableFormats": [
+      "webm"
+    ],
+    "status": "completed"
+  },
+  {
+    "id": "vid_1792526141922_8rx3jh",
+    "userId": "user_default_1",
+    "title": "Apresentação Executiva",
+    "createdAt": "2026-10-21T16:12:01.977Z",
+    "durationSeconds": 15,
+    "resolution": "1920x1080 Full HD",
+    "format": "webm",
+    "fileSizeBytes": 5224395,
+    "downloadUrl": "/api/video/download/vid_1792526141922_8rx3jh?format=webm",
+    "mp4DownloadUrl": "/api/video/download/vid_1792526141922_8rx3jh?format=mp4",
+    "webmDownloadUrl": "/api/video/download/vid_1792526141922_8rx3jh?format=webm",
+    "streamUrl": "/api/video/stream/vid_1792526141922_8rx3jh",
+    "availableFormats": [
+      "mp4",
+      "webm"
+    ],
+    "status": "completed"
+  },
+  {
+    "id": "vid_1792524815384_dxbwi5",
+    "userId": "user_default_1",
+    "title": "Apresentação Executiva",
+    "createdAt": "2026-10-21T16:12:01.961Z",
+    "durationSeconds": 15,
+    "resolution": "1920x1080 Full HD",
+    "format": "webm",
+    "fileSizeBytes": 5291115,
+    "downloadUrl": "/api/video/download/vid_1792524815384_dxbwi5?format=webm",
+    "mp4DownloadUrl": "/api/video/download/vid_1792524815384_dxbwi5?format=mp4",
+    "webmDownloadUrl": "/api/video/download/vid_1792524815384_dxbwi5?format=webm",
+    "streamUrl": "/api/video/stream/vid_1792524815384_dxbwi5",
+    "availableFormats": [
+      "mp4",
+      "webm"
+    ],
+    "status": "completed"
+  }
+]

@@ -1,0 +1,6 @@
+{
+  "name": "Planilha Inteligente IA",
+  "description": "Transforme planilhas Excel e CSV em dashboards interativos, indicadores financeiros e relatórios empresariais com inteligência artificial.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

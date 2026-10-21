@@ -28,9 +28,6 @@ import {
 import {
   ChartConfig,
   FilterState,
-  UserProfile,
-  UserUsage,
-  PlanLimits,
 } from './types';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
@@ -41,7 +38,6 @@ import { GlobalFilters } from './components/GlobalFilters';
 import { ImportModal } from './components/ImportModal';
 import { UpdateDataModal } from './components/UpdateDataModal';
 import { AiAnalystDrawer } from './components/AiAnalystDrawer';
-import { PricingModal } from './components/PricingModal';
 import { AdminPanel } from './components/AdminPanel';
 import { TestSuiteModal } from './components/TestSuiteModal';
 import { ExportModal } from './components/ExportModal';
@@ -69,55 +65,11 @@ export default function App() {
   // Sidebar collapsed state
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
 
-  // User Profile & Limits
-  const [userProfile, setUserProfile] = useState<UserProfile>({
-    id: 'user_default_1',
-    email: 'animeemcristo@gmail.com',
-    name: 'Usuário',
-    role: 'admin',
-    plan: 'premium',
-    createdAt: new Date().toISOString(),
-  });
-
-  const [userUsage, setUserUsage] = useState<UserUsage>({
-    userId: 'user_default_1',
-    period: new Date().toISOString().slice(0, 7),
-    importsCount: 0,
-    aiQueriesCount: 0,
-    dashboardsCount: 0,
-    videoExportsCount: 0,
-  });
-
-  const [planLimits, setPlanLimits] = useState<PlanLimits>({
-    maxFileSizeMb: 25,
-    maxImportsPerMonth: 100,
-    maxDashboards: 9999,
-    maxAiQueriesPerMonth: 200,
-    maxVideoExportsPerMonth: 10,
-    hasAdvancedExports: true,
-    hasVideoExport: true,
-    hasWatermark: false,
-  });
-
-  // Fetch real profile & limits from backend
-  const refreshUserLimits = async () => {
-    try {
-      const res = await fetch('/api/auth/me', {
-        headers: { 'x-user-id': userProfile.id },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setUserProfile(data.profile);
-        setUserUsage(data.usage);
-        setPlanLimits(data.limits);
-      }
-    } catch (e) {
-      console.warn('Backend limits fetch error:', e);
-    }
-  };
-
+  // Check URL path/hash for direct admin access
   useEffect(() => {
-    refreshUserLimits();
+    if (window.location.pathname === '/admin' || window.location.hash === '#admin') {
+      setIsAdminOpen(true);
+    }
   }, []);
 
   // Active Dataset - starts null (strictly real data only, zero fictitious data)
@@ -265,13 +217,6 @@ export default function App() {
       setCharts(newCharts);
     }
 
-    // Increment backend usage
-    fetch('/api/user/consume', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: userProfile.id, action: 'import' }),
-    }).then(() => refreshUserLimits());
-
     setCurrentView('dashboard');
   };
 
@@ -343,7 +288,7 @@ export default function App() {
           setPendingFile(null);
           setIsImportOpen(true);
         }}
-        onOpenPricing={() => setIsPricingOpen(true)}
+        onOpenPricing={() => setIsExportOpen(true)}
         onGoToDashboard={() => setCurrentView('dashboard')}
       />
     );
@@ -353,12 +298,8 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors">
       {/* Top Header */}
       <Header
-        userProfile={userProfile}
-        userUsage={userUsage}
-        planLimits={planLimits}
         darkMode={darkMode}
         onToggleDarkMode={() => setDarkMode(!darkMode)}
-        onOpenPricing={() => setIsPricingOpen(true)}
         onOpenAdmin={() => setIsAdminOpen(true)}
         onOpenTests={() => setIsTestsOpen(true)}
         onOpenImport={() => {
@@ -378,7 +319,6 @@ export default function App() {
           }}
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-          userProfile={userProfile}
           onOpenImport={() => {
             setPendingFile(null);
             setIsImportOpen(true);
@@ -416,7 +356,6 @@ export default function App() {
             }
           }}
           onOpenVideoHistory={() => setIsVideoHistoryOpen(true)}
-          onOpenPricing={() => setIsPricingOpen(true)}
           onOpenAdmin={() => setIsAdminOpen(true)}
           onOpenTests={() => setIsTestsOpen(true)}
           onGoHome={() => setCurrentView('landing')}
@@ -550,16 +489,13 @@ export default function App() {
 
                   {/* Action Buttons */}
                   <div className="flex flex-wrap items-center gap-2">
-                    {/* Botão Premium: Criar vídeo de apresentação (visível somente para usuários Premium) */}
-                    {userProfile.plan === 'premium' && (
-                      <button
-                        onClick={() => setIsVideoEditorOpen(true)}
-                        className="px-4 py-2 text-xs font-black text-white bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 rounded-xl shadow-md shadow-orange-500/20 flex items-center gap-1.5 transition-all hover:scale-[1.02]"
-                        title="Criar vídeo animado corporativo de 15 segundos em Full HD 1080p"
-                      >
-                        <Film className="w-3.5 h-3.5" /> Criar vídeo de apresentação
-                      </button>
-                    )}
+                    <button
+                      onClick={() => setIsVideoEditorOpen(true)}
+                      className="px-4 py-2 text-xs font-black text-white bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 rounded-xl shadow-md shadow-orange-500/20 flex items-center gap-1.5 transition-all hover:scale-[1.02]"
+                      title="Criar vídeo animado corporativo de 15 segundos em Full HD 1080p"
+                    >
+                      <Film className="w-3.5 h-3.5" /> Criar vídeo de apresentação
+                    </button>
 
                     <button
                       onClick={() => setIsUpdateOpen(true)}
@@ -664,7 +600,6 @@ export default function App() {
           setPendingFile(null);
         }}
         onImportComplete={handleImportComplete}
-        planLimits={planLimits}
       />
 
       {dataset && (
@@ -690,22 +625,8 @@ export default function App() {
           onClose={() => setIsAiOpen(false)}
           dataset={dataset}
           metrics={activeMetrics}
-          userProfile={userProfile}
-          userUsage={userUsage}
-          onUsageUpdated={refreshUserLimits}
-          onOpenPricing={() => {
-            setIsAiOpen(false);
-            setIsPricingOpen(true);
-          }}
         />
       )}
-
-      <PricingModal
-        isOpen={isPricingOpen}
-        onClose={() => setIsPricingOpen(false)}
-        userProfile={userProfile}
-        onPlanUpgraded={refreshUserLimits}
-      />
 
       {isAdminOpen && <AdminPanel onClose={() => setIsAdminOpen(false)} />}
 
@@ -722,8 +643,6 @@ export default function App() {
           metrics={activeMetrics}
           charts={chartExportData}
           activeFilterSummary={filters.dateRange !== 'all' ? `Período ${filters.dateRange}` : 'Completo'}
-          userProfile={userProfile}
-          onOpenPricing={() => setIsPricingOpen(true)}
           onOpenVideoEditor={() => setIsVideoEditorOpen(true)}
         />
       )}
@@ -735,13 +654,6 @@ export default function App() {
           datasetName={dataset.name}
           charts={chartExportData}
           metrics={activeMetrics}
-          userProfile={userProfile}
-          userUsage={userUsage}
-          onUsageUpdated={refreshUserLimits}
-          onOpenPricing={() => {
-            setIsVideoEditorOpen(false);
-            setIsPricingOpen(true);
-          }}
           onOpenHistory={() => {
             setIsVideoEditorOpen(false);
             setIsVideoHistoryOpen(true);
@@ -753,7 +665,6 @@ export default function App() {
         <VideoHistoryModal
           isOpen={isVideoHistoryOpen}
           onClose={() => setIsVideoHistoryOpen(false)}
-          userProfile={userProfile}
           onOpenEditor={() => {
             setIsVideoHistoryOpen(false);
             if (dataset) {

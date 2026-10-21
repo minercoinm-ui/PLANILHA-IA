@@ -25,7 +25,7 @@ interface ImportModalProps {
   isOpen: boolean;
   onClose: () => void;
   onImportComplete: (dataset: ProcessedDataset) => void;
-  planLimits: PlanLimits;
+  planLimits?: PlanLimits;
   initialFile?: File | null;
 }
 
@@ -70,11 +70,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       return;
     }
 
-    // 2. Validate file size based on plan limits
-    const maxBytes = planLimits.maxFileSizeMb * 1024 * 1024;
+    // 2. Validate file size (max 25 MB)
+    const maxMb = planLimits?.maxFileSizeMb || 25;
+    const maxBytes = maxMb * 1024 * 1024;
     if (selectedFile.size > maxBytes) {
       setErrorMessage(
-        `Arquivo de ${(selectedFile.size / (1024 * 1024)).toFixed(1)} MB excede o limite do seu plano (${planLimits.maxFileSizeMb} MB). Faça upgrade para o Premium para arquivos de até 25 MB.`
+        `Arquivo de ${(selectedFile.size / (1024 * 1024)).toFixed(1)} MB excede o limite máximo suportado (${maxMb} MB).`
       );
       return;
     }
@@ -205,7 +206,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             <div>
               <h2 className="text-base font-bold text-slate-900 dark:text-white">Importar Planilha de Dados</h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Excel (.xlsx, .xls) ou CSV • Limite: até {planLimits.maxFileSizeMb} MB por arquivo
+                Excel (.xlsx, .xls) ou CSV • Limite: até {planLimits?.maxFileSizeMb || 25} MB por arquivo
               </p>
             </div>
           </div>

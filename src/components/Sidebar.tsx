@@ -5,29 +5,26 @@ import {
   RefreshCw,
   Sparkles,
   Download,
-  CreditCard,
   Shield,
   ShieldCheck,
   ChevronLeft,
   ChevronRight,
   FolderKanban,
   Home,
+  Lock,
 } from 'lucide-react';
-import { UserProfile } from '../types';
 
 interface SidebarProps {
   currentTab: string;
   onTabChange: (tab: string) => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
-  userProfile: UserProfile;
   onOpenImport: () => void;
   onOpenUpdate: () => void;
   onOpenAi: () => void;
   onOpenExport: () => void;
   onOpenVideo: () => void;
   onOpenVideoHistory: () => void;
-  onOpenPricing: () => void;
   onOpenAdmin: () => void;
   onOpenTests: () => void;
   onGoHome: () => void;
@@ -38,30 +35,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onTabChange,
   collapsed,
   onToggleCollapse,
-  userProfile,
   onOpenImport,
   onOpenUpdate,
   onOpenAi,
   onOpenExport,
   onOpenVideo,
   onOpenVideoHistory,
-  onOpenPricing,
   onOpenAdmin,
   onOpenTests,
   onGoHome,
 }) => {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard Atual', icon: LayoutDashboard, action: () => onTabChange('dashboard') },
-    { id: 'video', label: 'Vídeo Apresentação', icon: Sparkles, action: onOpenVideo, badge: 'PRO' },
+    { id: 'video', label: 'Vídeo Apresentação', icon: Sparkles, action: onOpenVideo, badge: '1080p' },
     { id: 'my_videos', label: 'Meus Vídeos', icon: FolderKanban, action: onOpenVideoHistory },
     { id: 'import', label: 'Importar Planilha', icon: UploadCloud, action: onOpenImport },
     { id: 'update', label: 'Atualizar Dados', icon: RefreshCw, action: onOpenUpdate },
     { id: 'ai', label: 'Analista IA', icon: Sparkles, action: onOpenAi, badge: 'IA' },
     { id: 'export', label: 'Exportar Relatórios', icon: Download, action: onOpenExport },
-    { id: 'pricing', label: 'Planos & Faturamento', icon: CreditCard, action: onOpenPricing },
-    ...(userProfile.role === 'admin'
-      ? [{ id: 'admin', label: 'Painel Admin', icon: Shield, action: onOpenAdmin }]
-      : []),
+    { id: 'admin', label: 'Painel Admin', icon: Lock, action: onOpenAdmin },
     { id: 'tests', label: 'Testes Automatizados', icon: ShieldCheck, action: onOpenTests },
     { id: 'home', label: 'Página Inicial (Landing)', icon: Home, action: onGoHome },
   ];

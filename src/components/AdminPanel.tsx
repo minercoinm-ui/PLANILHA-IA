@@ -1,17 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Users,
+  Shield,
+  Lock,
   DollarSign,
   FileSpreadsheet,
-  Cpu,
-  Shield,
-  Activity,
-  Search,
+  Film,
   CheckCircle2,
-  XCircle,
   AlertCircle,
   RefreshCw,
+  LogOut,
+  Save,
+  KeyRound,
   Terminal,
+  Activity,
+  X,
+  Loader2,
+  Calendar,
+  Layers,
 } from 'lucide-react';
 import { formatCurrencyBRL } from '../lib/dataProcessor';
 
@@ -20,297 +25,575 @@ interface AdminPanelProps {
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
-  const [metrics, setMetrics] = useState<any>(null);
-  const [users, setUsers] = useState<any[]>([]);
-  const [logs, setLogs] = useState<any[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [updatingUser, setUpdatingUser] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [loginEmail, setLoginEmail] = useState('j14menez@gmail.com');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
-  // Webhook Simulator State
-  const [simulatingWebhook, setSimulatingWebhook] = useState(false);
-  const [webhookStatus, setWebhookStatus] = useState<string | null>(null);
+  // Dashboard Stats
+  const [loadingStats, setLoadingStats] = useState(false);
+  const [stats, setStats] = useState<any>(null);
+  const [pdfPriceInput, setPdfPriceInput] = useState<string>('4.90');
+  const [videoPriceInput, setVideoPriceInput] = useState<string>('14.90');
+  const [savingPrice, setSavingPrice] = useState(false);
+  const [priceMessage, setPriceMessage] = useState<string | null>(null);
 
-  const fetchAdminData = async () => {
-    setLoading(true);
+  // Password Change State
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [currentPass, setCurrentPass] = useState('');
+  const [newPass, setNewPass] = useState('');
+  const [passwordChangeMsg, setPasswordChangeMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [changingPass, setChangingPass] = useState(false);
+
+  // Check admin session on mount
+  const checkSession = async () => {
     try {
-      const res = await fetch('/api/admin/metrics');
+      const res = await fetch('/api/admin/session');
       const data = await res.json();
-      setMetrics(data.metrics);
-      setUsers(data.users || []);
-      setLogs(data.recentLogs || []);
-    } catch (e: any) {
-      console.error(e);
+      setIsAuthenticated(Boolean(data.authenticated));
+      if (data.authenticated) {
+        fetchDashboardStats();
+      }
+    } catch (_) {
+      setIsAuthenticated(false);
+    }
+  };
+
+  const fetchDashboardStats = async () => {
+    setLoadingStats(true);
+    try {
+      const res = await fetch('/api/admin/dashboard-stats');
+      if (res.ok) {
+        const data = await res.json();
+        setStats(data);
+        if (data.pricing) {
+          setPdfPriceInput(data.pricing.pdfPrice.toString());
+          setVideoPriceInput(data.pricing.videoPrice.toString());
+        }
+      } else if (res.status === 401) {
+        setIsAuthenticated(false);
+      }
+    } catch (err) {
+      console.error(err);
     } finally {
-      setLoading(false);
+      setLoadingStats(false);
     }
   };
 
   useEffect(() => {
-    fetchAdminData();
+    checkSession();
   }, []);
 
-  const handleChangePlan = async (targetUserId: string, newPlan: 'free' | 'premium') => {
-    setUpdatingUser(targetUserId);
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginLoading(true);
+    setLoginError(null);
     try {
-      const res = await fetch('/api/admin/update-plan', {
+      const res = await fetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUserId, newPlan }),
+        body: JSON.stringify({ email: loginEmail, password: loginPassword }),
       });
-      if (res.ok) {
-        await fetchAdminData();
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Falha na autenticação.');
       }
-    } catch (e: any) {
-      setWebhookStatus('Erro ao atualizar plano: ' + e.message);
+      setIsAuthenticated(true);
+      fetchDashboardStats();
+    } catch (err: any) {
+      setLoginError(err.message || 'Erro ao realizar login.');
     } finally {
-      setUpdatingUser(null);
+      setLoginLoading(false);
     }
   };
 
-  const handleTestWebhook = async () => {
-    setSimulatingWebhook(true);
-    setWebhookStatus(null);
+  const handleLogout = async () => {
     try {
-      const res = await fetch('/api/mercadopago/webhook', {
+      await fetch('/api/admin/logout', { method: 'POST' });
+    } catch (_) {}
+    setIsAuthenticated(false);
+    setStats(null);
+  };
+
+  const handleSavePrices = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingPrice(true);
+    setPriceMessage(null);
+    try {
+      const res = await fetch('/api/admin/pricing', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-signature': 'ts=1710000000,v1=simulated_hmac_sha256',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'payment',
-          action: 'payment.updated',
-          status: 'approved',
-          userId: 'user_free_demo',
-          data: { id: `sim_pay_${Date.now()}` },
+          pdfPrice: parseFloat(pdfPriceInput),
+          videoPrice: parseFloat(videoPriceInput),
         }),
       });
       const data = await res.json();
-      setWebhookStatus(`Webhook recebido com sucesso (ID: ${data.eventId})! Usuário atualizado para Premium.`);
-      await fetchAdminData();
+      if (!res.ok) throw new Error(data.error || 'Erro ao salvar preços.');
+      setPriceMessage('Preços atualizados com sucesso!');
+      setTimeout(() => setPriceMessage(null), 3500);
+      fetchDashboardStats();
     } catch (err: any) {
-      setWebhookStatus('Falha ao simular webhook: ' + err.message);
+      setPriceMessage(`Erro: ${err.message}`);
     } finally {
-      setSimulatingWebhook(false);
+      setSavingPrice(false);
     }
   };
 
-  const filteredUsers = users.filter(
-    (u) =>
-      u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      u.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setChangingPass(true);
+    setPasswordChangeMsg(null);
+    try {
+      const res = await fetch('/api/admin/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword: currentPass, newPassword: newPass }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Falha ao alterar senha.');
+      setPasswordChangeMsg({ type: 'success', text: 'Senha administrativa atualizada com sucesso!' });
+      setCurrentPass('');
+      setNewPass('');
+      setTimeout(() => {
+        setShowPasswordChange(false);
+        setPasswordChangeMsg(null);
+      }, 2000);
+    } catch (err: any) {
+      setPasswordChangeMsg({ type: 'error', text: err.message });
+    } finally {
+      setChangingPass(false);
+    }
+  };
+
+  const handleClearLogs = async () => {
+    if (!window.confirm('Deseja realmente limpar todos os registros de erros do servidor?')) return;
+    try {
+      await fetch('/api/admin/clear-logs', { method: 'POST' });
+      fetchDashboardStats();
+    } catch (_) {}
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-5xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-5xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-800/40">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-rose-50 text-rose-600 rounded-xl">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/80 dark:bg-slate-800/40">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-xl">
               <Shield className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                Painel Administrativo & Governança
-                <span className="text-[10px] font-bold px-2 py-0.2 bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 rounded-full">
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                  Governança & Controle Administrativo
+                </h2>
+                <span className="text-[10px] font-bold px-2 py-0.5 bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300 rounded-full border border-rose-200 dark:border-rose-800">
                   Acesso Restrito
                 </span>
-              </h2>
+              </div>
               <p className="text-xs text-slate-500">
-                Auditoria de assinaturas, usuários, limites e chamadas de Inteligência Artificial
+                Administrador autorizado: <strong className="text-slate-700 dark:text-slate-300">j14menez@gmail.com</strong>
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-lg">
-            Fechar
-          </button>
+          <div className="flex items-center gap-2">
+            {isAuthenticated && (
+              <button
+                onClick={handleLogout}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 flex items-center gap-1.5 transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" /> Sair
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
-        {/* Body */}
+        {/* Modal Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
-          {/* Key Metrics Cards */}
-          {metrics && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-700">
-                <div className="flex items-center justify-between text-slate-400 mb-1">
-                  <span className="uppercase text-[10px] font-bold">Total Usuários</span>
-                  <Users className="w-4 h-4 text-blue-600" />
+          {/* Unauthenticated Login Screen */}
+          {isAuthenticated === false && (
+            <div className="max-w-md mx-auto py-10 space-y-6">
+              <div className="text-center space-y-1.5">
+                <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 mx-auto flex items-center justify-center">
+                  <Lock className="w-6 h-6 text-rose-600" />
                 </div>
-                <div className="text-xl font-bold text-slate-900 dark:text-white">
-                  {metrics.totalUsers}
-                </div>
-                <div className="text-[11px] text-slate-500 mt-1">
-                  {metrics.premiumUsers} Premium • {metrics.freeUsers} Free
-                </div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  Autenticação do Administrador
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Informe a senha administrativa configurada para acessar o painel de faturamento e governança.
+                </p>
               </div>
 
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-700">
-                <div className="flex items-center justify-between text-slate-400 mb-1">
-                  <span className="uppercase text-[10px] font-bold">MRR Estimado</span>
-                  <DollarSign className="w-4 h-4 text-emerald-600" />
+              {loginError && (
+                <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{loginError}</span>
                 </div>
-                <div className="text-xl font-bold text-slate-900 dark:text-white">
-                  {formatCurrencyBRL(metrics.mrrBRL)}
-                </div>
-                <div className="text-[11px] text-emerald-600 font-medium mt-1">
-                  Receita Recorrente Mensal
-                </div>
-              </div>
+              )}
 
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-700">
-                <div className="flex items-center justify-between text-slate-400 mb-1">
-                  <span className="uppercase text-[10px] font-bold">Consultas IA</span>
-                  <Cpu className="w-4 h-4 text-violet-600" />
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    E-mail Autorizado
+                  </label>
+                  <input
+                    type="email"
+                    value={loginEmail}
+                    readOnly
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/60 text-slate-500 text-xs cursor-not-allowed"
+                  />
                 </div>
-                <div className="text-xl font-bold text-slate-900 dark:text-white">
-                  {metrics.totalAiQueries}
-                </div>
-                <div className="text-[11px] text-slate-500 mt-1 truncate" title={metrics.aiEngine}>
-                  {metrics.aiEngine}
-                </div>
-              </div>
 
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-700">
-                <div className="flex items-center justify-between text-slate-400 mb-1">
-                  <span className="uppercase text-[10px] font-bold">Importações</span>
-                  <FileSpreadsheet className="w-4 h-4 text-amber-600" />
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Senha Administrativa
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="Digite sua senha de administrador"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    required
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                  />
                 </div>
-                <div className="text-xl font-bold text-slate-900 dark:text-white">
-                  {metrics.totalImports}
-                </div>
-                <div className="text-[11px] text-emerald-600 font-medium mt-1 flex items-center gap-1">
-                  <Activity className="w-3 h-3" /> {metrics.systemHealth}
-                </div>
-              </div>
+
+                <button
+                  type="submit"
+                  disabled={loginLoading}
+                  className="w-full py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs shadow-md transition-colors flex items-center justify-center gap-2"
+                >
+                  {loginLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Lock className="w-4 h-4" />
+                  )}
+                  Acessar Painel Administrativo
+                </button>
+              </form>
             </div>
           )}
 
-          {/* Webhook & Integration Testing Tool */}
-          <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 uppercase text-[11px]">
-                <Terminal className="w-4 h-4 text-blue-600" />
-                Simulador de Webhooks & Integração Mercado Pago
-              </span>
-              <button
-                onClick={handleTestWebhook}
-                disabled={simulatingWebhook}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold flex items-center gap-1.5 shadow-xs"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${simulatingWebhook ? 'animate-spin' : ''}`} />
-                Disparar Webhook de Teste (payment.updated)
-              </button>
-            </div>
-            <p className="text-slate-500 text-[11px]">
-              Testa o endpoint <code className="bg-slate-200 dark:bg-slate-700 px-1 py-0.5 rounded-sm">/api/mercadopago/webhook</code> validando assinatura HMAC, idempotência e atualização de plano no banco de dados.
-            </p>
-            {webhookStatus && (
-              <div className="p-2.5 bg-emerald-50 text-emerald-800 rounded-lg text-[11px] flex items-center gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                <span>{webhookStatus}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Users Table */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-slate-800 dark:text-slate-200 uppercase text-[11px]">
-                Gestão de Usuários & Planos
-              </h3>
-              <div className="relative w-64">
-                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Filtrar por nome ou e-mail..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs"
-                />
-              </div>
-            </div>
-
-            <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
-              <table className="w-full text-left border-collapse">
-                <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 border-b border-slate-200 dark:border-slate-700">
-                  <tr>
-                    <th className="py-2.5 px-3 font-semibold">Usuário</th>
-                    <th className="py-2.5 px-3 font-semibold">Papel</th>
-                    <th className="py-2.5 px-3 font-semibold">Plano Atual</th>
-                    <th className="py-2.5 px-3 font-semibold">Ação de Governança</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {filteredUsers.map((u) => (
-                    <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                      <td className="py-2.5 px-3">
-                        <div className="font-semibold text-slate-900 dark:text-white">{u.name}</div>
-                        <div className="text-[11px] text-slate-400">{u.email}</div>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            u.role === 'admin'
-                              ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
-                              : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                          }`}
-                        >
-                          {u.role.toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            u.plan === 'premium'
-                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                              : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
-                          }`}
-                        >
-                          {u.plan.toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <button
-                          onClick={() => handleChangePlan(u.id, u.plan === 'premium' ? 'free' : 'premium')}
-                          disabled={updatingUser === u.id}
-                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-md font-medium text-[11px] transition-colors"
-                        >
-                          {updatingUser === u.id
-                            ? 'Atualizando...'
-                            : u.plan === 'premium'
-                            ? 'Mudar para Free'
-                            : 'Promover a Premium'}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Audit Logs */}
-          <div className="space-y-3">
-            <h3 className="font-bold text-slate-800 dark:text-slate-200 uppercase text-[11px]">
-              Trilha de Auditoria Recente (Audit Logs)
-            </h3>
-            <div className="max-h-40 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-xl divide-y divide-slate-100 dark:divide-slate-800 font-mono text-[11px]">
-              {logs.map((log) => (
-                <div key={log.id} className="p-2 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                  <div className="flex items-center gap-2 truncate">
-                    <span className="font-bold text-blue-600">[{log.action}]</span>
-                    <span className="text-slate-500">Recurso: {log.resourceType}</span>
-                    <span className="text-slate-400 truncate">Meta: {JSON.stringify(log.metadata)}</span>
-                  </div>
-                  <span className="text-slate-400 shrink-0 ml-2">
-                    {new Date(log.timestamp).toLocaleTimeString('pt-BR')}
-                  </span>
+          {/* Authenticated Admin Dashboard */}
+          {isAuthenticated === true && (
+            <>
+              {loadingStats && !stats && (
+                <div className="py-12 flex flex-col items-center justify-center space-y-2">
+                  <Loader2 className="w-6 h-6 text-rose-600 animate-spin" />
+                  <p className="text-slate-500">Carregando métricas e dados de auditoria...</p>
                 </div>
-              ))}
-            </div>
-          </div>
+              )}
+
+              {stats && (
+                <div className="space-y-6">
+                  {/* Financial & Operational Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Real Revenue Card */}
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center justify-between text-slate-400 mb-1.5">
+                        <span className="uppercase text-[10px] font-bold">Faturamento Real (Pix)</span>
+                        <DollarSign className="w-4 h-4 text-emerald-600" />
+                      </div>
+                      <div className="text-2xl font-black text-slate-900 dark:text-white">
+                        {formatCurrencyBRL(stats.financials.realRevenueBrl)}
+                      </div>
+                      <div className="text-[11px] text-emerald-600 font-semibold mt-1">
+                        {stats.financials.totalRealTransactions} pagamentos confirmados
+                      </div>
+                    </div>
+
+                    {/* PDF Tasks Card */}
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center justify-between text-slate-400 mb-1.5">
+                        <span className="uppercase text-[10px] font-bold">Relatórios PDF</span>
+                        <FileSpreadsheet className="w-4 h-4 text-blue-600" />
+                      </div>
+                      <div className="text-2xl font-black text-slate-900 dark:text-white">
+                        {stats.tasks.pdfTasksCount}
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-1">
+                        {stats.tasks.freePdfClaimsCount} visitantes no 1º PDF grátis
+                      </div>
+                    </div>
+
+                    {/* Video Rendering Tasks Card */}
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center justify-between text-slate-400 mb-1.5">
+                        <span className="uppercase text-[10px] font-bold">Vídeos Full HD (1080p)</span>
+                        <Film className="w-4 h-4 text-violet-600" />
+                      </div>
+                      <div className="text-2xl font-black text-slate-900 dark:text-white">
+                        {stats.tasks.videoTasksCount}
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-1">
+                        100% pagamentos avulsos
+                      </div>
+                    </div>
+
+                    {/* System Health */}
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center justify-between text-slate-400 mb-1.5">
+                        <span className="uppercase text-[10px] font-bold">Status do Servidor</span>
+                        <Activity className="w-4 h-4 text-rose-600" />
+                      </div>
+                      <div className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
+                        100% Operacional
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-1 truncate" title={stats.system.ffmpegPath}>
+                        FFmpeg: {stats.system.ffmpegPath ? 'Disponível' : 'Ausente'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Price Configuration & Admin Settings */}
+                  <div className="p-5 bg-white dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <DollarSign className="w-4 h-4 text-emerald-600" />
+                        <h3 className="font-bold text-slate-900 dark:text-white uppercase text-[11px]">
+                          Tabela de Preços dos Serviços (Pay-Per-Task)
+                        </h3>
+                      </div>
+                      <button
+                        onClick={() => setShowPasswordChange(!showPasswordChange)}
+                        className="px-2.5 py-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg flex items-center gap-1 transition-colors"
+                      >
+                        <KeyRound className="w-3.5 h-3.5" /> Alterar Senha Admin
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleSavePrices} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Preço do PDF Adicional (R$)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.10"
+                          min="0"
+                          value={pdfPriceInput}
+                          onChange={(e) => setPdfPriceInput(e.target.value)}
+                          className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold"
+                        />
+                        <span className="text-[10px] text-slate-400">1º PDF do visitante é gratuito</span>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Preço Renderização Vídeo Full HD (R$)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.50"
+                          min="0"
+                          value={videoPriceInput}
+                          onChange={(e) => setVideoPriceInput(e.target.value)}
+                          className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold"
+                        />
+                        <span className="text-[10px] text-slate-400">Todos os vídeos são pagos</span>
+                      </div>
+
+                      <div>
+                        <button
+                          type="submit"
+                          disabled={savingPrice}
+                          className="w-full py-2 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5"
+                        >
+                          {savingPrice ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                          Salvar Alterações
+                        </button>
+                      </div>
+                    </form>
+
+                    {priceMessage && (
+                      <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 rounded-xl text-[11px] flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 shrink-0" />
+                        <span>{priceMessage}</span>
+                      </div>
+                    )}
+
+                    {/* Change Password Panel if toggled */}
+                    {showPasswordChange && (
+                      <form onSubmit={handleChangePassword} className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3 mt-3 animate-in fade-in">
+                        <h4 className="font-bold text-slate-800 dark:text-slate-200 text-xs flex items-center gap-1.5">
+                          <KeyRound className="w-4 h-4 text-rose-600" /> Alterar Senha Administrativa
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <input
+                            type="password"
+                            placeholder="Senha Atual"
+                            value={currentPass}
+                            onChange={(e) => setCurrentPass(e.target.value)}
+                            required
+                            className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"
+                          />
+                          <input
+                            type="password"
+                            placeholder="Nova Senha (mínimo 6 caracteres)"
+                            value={newPass}
+                            onChange={(e) => setNewPass(e.target.value)}
+                            required
+                            className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"
+                          />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowPasswordChange(false)}
+                            className="px-3 py-1 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={changingPass}
+                            className="px-3 py-1 bg-rose-600 text-white font-bold rounded-lg"
+                          >
+                            {changingPass ? 'Salvando...' : 'Confirmar Nova Senha'}
+                          </button>
+                        </div>
+                        {passwordChangeMsg && (
+                          <div className={`p-2 rounded-lg text-[11px] ${passwordChangeMsg.type === 'success' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                            {passwordChangeMsg.text}
+                          </div>
+                        )}
+                      </form>
+                    )}
+                  </div>
+
+                  {/* Tasks & Files Table */}
+                  <div className="space-y-3">
+                    <h3 className="font-bold text-slate-800 dark:text-slate-200 uppercase text-[11px] flex items-center justify-between">
+                      <span>Tarefas Recentes de Arquivos & Vídeos</span>
+                      <button
+                        onClick={fetchDashboardStats}
+                        className="text-slate-400 hover:text-slate-600 flex items-center gap-1 text-[10px]"
+                      >
+                        <RefreshCw className="w-3 h-3" /> Atualizar
+                      </button>
+                    </h3>
+
+                    <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden bg-white dark:bg-slate-900">
+                      <table className="w-full text-left border-collapse">
+                        <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 border-b border-slate-200 dark:border-slate-700">
+                          <tr>
+                            <th className="py-2.5 px-3 font-semibold">ID / Tarefa</th>
+                            <th className="py-2.5 px-3 font-semibold">Tipo</th>
+                            <th className="py-2.5 px-3 font-semibold">Status</th>
+                            <th className="py-2.5 px-3 font-semibold">Valor</th>
+                            <th className="py-2.5 px-3 font-semibold">Data / Hora</th>
+                            <th className="py-2.5 px-3 font-semibold">Ação</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {stats.recentTasks?.map((task: any) => (
+                            <tr key={task.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                              <td className="py-2.5 px-3">
+                                <div className="font-semibold text-slate-900 dark:text-white truncate max-w-[200px]" title={task.title}>
+                                  {task.title || 'Sem título'}
+                                </div>
+                                <div className="text-[10px] text-slate-400 font-mono">{task.id}</div>
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <span className="uppercase text-[10px] font-bold text-slate-600 dark:text-slate-300">
+                                  {task.serviceType}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                    task.status === 'ready' || task.status === 'completed' || task.status === 'free_granted'
+                                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                      : task.status === 'paid'
+                                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                                      : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                  }`}
+                                >
+                                  {task.status.toUpperCase()}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white">
+                                {task.amountBrl === 0 ? 'Gratuito (1º)' : formatCurrencyBRL(task.amountBrl)}
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-400 text-[10px]">
+                                {new Date(task.createdAt).toLocaleString('pt-BR')}
+                              </td>
+                              <td className="py-2.5 px-3">
+                                {task.downloadUrl ? (
+                                  <a
+                                    href={task.downloadUrl}
+                                    download
+                                    className="px-2 py-1 bg-blue-50 text-blue-600 rounded-md text-[10px] font-bold hover:bg-blue-100"
+                                  >
+                                    Baixar
+                                  </a>
+                                ) : (
+                                  <span className="text-slate-400 text-[10px]">-</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                          {(!stats.recentTasks || stats.recentTasks.length === 0) && (
+                            <tr>
+                              <td colSpan={6} className="py-6 text-center text-slate-400">
+                                Nenhuma tarefa registrada ainda no servidor.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Error Logs Audit */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-slate-800 dark:text-slate-200 uppercase text-[11px] flex items-center gap-1.5">
+                        <Terminal className="w-4 h-4 text-rose-600" />
+                        Registros de Auditoria & Erros Técnicos ({stats.errorLogs?.length || 0})
+                      </h3>
+                      <button
+                        onClick={handleClearLogs}
+                        className="text-slate-400 hover:text-rose-600 text-[10px] font-semibold"
+                      >
+                        Limpar Logs
+                      </button>
+                    </div>
+
+                    <div className="max-h-40 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-2xl divide-y divide-slate-100 dark:divide-slate-800 font-mono text-[10px] bg-slate-950 text-slate-300 p-2">
+                      {stats.errorLogs?.map((log: any) => (
+                        <div key={log.id} className="py-1.5 flex items-start justify-between gap-2">
+                          <div>
+                            <span className="text-rose-400 font-bold">[{log.service}]</span>{' '}
+                            <span>{log.message}</span>
+                            {log.details && <span className="text-slate-500 block">{log.details}</span>}
+                          </div>
+                          <span className="text-slate-500 shrink-0">
+                            {new Date(log.timestamp).toLocaleTimeString('pt-BR')}
+                          </span>
+                        </div>
+                      ))}
+                      {(!stats.errorLogs || stats.errorLogs.length === 0) && (
+                        <div className="py-4 text-center text-slate-500">
+                          Nenhum erro registrado. Sistema operando de forma 100% íntegra.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -3,40 +3,37 @@ import {
   Download,
   Trash2,
   X,
-  Clock,
   Film,
-  CheckCircle2,
-  AlertCircle,
-  FileSpreadsheet,
   RefreshCw,
   Plus,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { VideoExportRecord } from '../types/video';
-import { UserProfile } from '../types';
+import { downloadVideoWithVerification, DownloadProgressInfo } from '../lib/videoDownloader';
 
 interface VideoHistoryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  userProfile: UserProfile;
   onOpenEditor: () => void;
 }
 
 export const VideoHistoryModal: React.FC<VideoHistoryModalProps> = ({
   isOpen,
   onClose,
-  userProfile,
   onOpenEditor,
 }) => {
   const [history, setHistory] = useState<VideoExportRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const fetchHistory = async () => {
     setLoading(true);
+    setDownloadError(null);
     try {
-      const res = await fetch('/api/video/history', {
-        headers: { 'x-user-id': userProfile.id },
-      });
+      const res = await fetch('/api/video/history');
       if (res.ok) {
         const text = await res.text();
         try {
@@ -52,15 +49,16 @@ export const VideoHistoryModal: React.FC<VideoHistoryModalProps> = ({
   };
 
   useEffect(() => {
-    fetchHistory();
-  }, [userProfile.id]);
+    if (isOpen) {
+      fetchHistory();
+    }
+  }, [isOpen]);
 
   const handleDelete = async (id: string) => {
     setDeletingId(id);
     try {
       const res = await fetch(`/api/video/history/${id}`, {
         method: 'DELETE',
-        headers: { 'x-user-id': userProfile.id },
       });
       if (res.ok) {
         setHistory((prev) => prev.filter((item) => item.id !== id));
@@ -72,11 +70,37 @@ export const VideoHistoryModal: React.FC<VideoHistoryModalProps> = ({
     }
   };
 
+  const handleDownloadItem = async (record: VideoExportRecord) => {
+    setDownloadingId(record.id);
+    setDownloadError(null);
+
+    const cleanSafeTitle = (record.title || 'apresentacao_executiva')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9_-]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '') || 'apresentacao_executiva';
+
+    const filename = `${cleanSafeTitle}_1080p.${record.format}`;
+
+    try {
+      await downloadVideoWithVerification({
+        videoUrl: record.downloadUrl,
+        filename,
+        format: record.format,
+      });
+    } catch (err: any) {
+      setDownloadError(`Erro ao baixar ${record.title}: ${err.message}`);
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-3xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[85vh] text-slate-100 animate-in fade-in zoom-in-95">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-3xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[85vh] text-slate-100">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -111,6 +135,13 @@ export const VideoHistoryModal: React.FC<VideoHistoryModalProps> = ({
           </div>
         </div>
 
+        {downloadError && (
+          <div className="mx-6 mt-4 p-3 rounded-xl bg-rose-950/60 border border-rose-800 text-rose-300 text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{downloadError}</span>
+          </div>
+        )}
+
         {/* Content Table / List */}
         <div className="p-6 overflow-y-auto flex-1">
           {loading ? (
@@ -124,7 +155,7 @@ export const VideoHistoryModal: React.FC<VideoHistoryModalProps> = ({
               <div>
                 <h3 className="font-bold text-slate-300 text-sm">Nenhum vídeo gerado ainda</h3>
                 <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                  Utilize o editor de vídeo para criar animações dos seus gráficos e indicadores corporativos em Full HD 1080p.
+                  Utilize o estúdio de vídeo para criar animações dos seus gráficos e indicadores corporativos em Full HD 1080p.
                 </p>
               </div>
               <button
@@ -180,18 +211,18 @@ export const VideoHistoryModal: React.FC<VideoHistoryModalProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2 self-end sm:self-center">
-                      <a
-                        href={record.downloadUrl}
-                        download={`${(record.title || 'apresentacao_executiva')
-                          .normalize('NFD')
-                          .replace(/[\u0300-\u036f]/g, '')
-                          .replace(/[^a-zA-Z0-9_-]/g, '_')
-                          .replace(/_+/g, '_')
-                          .replace(/^_|_$/g, '') || 'apresentacao_executiva'}_1080p.${record.format}`}
+                      <button
+                        onClick={() => handleDownloadItem(record)}
+                        disabled={downloadingId === record.id}
                         className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs"
                       >
-                        <Download className="w-3.5 h-3.5" /> Baixar
-                      </a>
+                        {downloadingId === record.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Download className="w-3.5 h-3.5" />
+                        )}
+                        Baixar
+                      </button>
 
                       <button
                         onClick={() => handleDelete(record.id)}

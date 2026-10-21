@@ -1,3 +1,5 @@
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { MetricCardValue, formatNumberBR } from './dataProcessor';
 import { ChartConfig } from '../types';
 
@@ -38,11 +40,310 @@ export function exportToCsvBR(rows: Record<string, any>[], filename: string) {
   link.setAttribute('download', `${filename.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`);
   document.body.appendChild(link);
   link.click();
-  document.body.removeChild(link);
+  setTimeout(() => {
+    if (document.body.contains(link)) {
+      document.body.removeChild(link);
+    }
+    URL.revokeObjectURL(url);
+  }, 2000);
+}
+
+export interface PdfExportResult {
+  success: boolean;
+  filename: string;
+  sizeBytes: number;
 }
 
 /**
- * Generate a printable executive PDF report in Brazilian business format
+ * Generates and directly downloads a genuine high-fidelity executive PDF report (.pdf)
+ * Compatible with all desktop & mobile browsers, iframes, and local environments.
+ */
+export async function downloadExecutivePdfReport(
+  dashboardTitle: string,
+  metrics: MetricCardValue[],
+  charts: { config: ChartConfig; data: { dimension: string; metric: number }[] }[],
+  filterSummary?: string,
+  watermark = false
+): Promise<PdfExportResult> {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const cleanTitle = (dashboardTitle || 'Planilha_Inteligente').replace(/[^a-zA-Z0-9_\-]/g, '_');
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const filename = `Relatorio_Executivo_${cleanTitle}_${dateStr}.pdf`;
+
+      doc.setProperties({
+        title: `Relatório Executivo — ${dashboardTitle}`,
+        subject: 'Relatório Executivo de Indicadores e Gráficos Gerenciais',
+        author: 'Planilha Inteligente IA',
+        creator: 'Planilha Inteligente IA — Relatórios Corporativos',
+      });
+
+      const nowBR = new Intl.DateTimeFormat('pt-BR', {
+        dateStyle: 'full',
+        timeStyle: 'short',
+      }).format(new Date());
+
+      const pageWidth = 210;
+      const pageHeight = 297;
+      const marginX = 14;
+      const usableWidth = pageWidth - marginX * 2;
+
+      // 1. Top Corporate Header Banner (Dark Navy)
+      doc.setFillColor(15, 23, 42); // #0f172a
+      doc.rect(0, 0, pageWidth, 22, 'F');
+
+      // Accent color strip at bottom of header banner
+      doc.setFillColor(2, 132, 199); // #0284c7 Sky Blue
+      doc.rect(0, 22, pageWidth, 2, 'F');
+
+      // Brand Title on Top Banner
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('PLANILHA INTELIGENTE IA', marginX, 10);
+
+      // Subtitle on Top Banner
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(186, 230, 253); // #bae6fd
+      doc.text('ANALYTICS & RELATÓRIOS EXECUTIVOS AUTOMATIZADOS', marginX, 16);
+
+      // Timestamp on top right
+      doc.setFontSize(8);
+      doc.setTextColor(226, 232, 240);
+      doc.text(nowBR, pageWidth - marginX, 14, { align: 'right' });
+
+      // 2. Report Document Title & Scope
+      let currentY = 32;
+      doc.setTextColor(15, 23, 42);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(15);
+      doc.text(dashboardTitle || 'Relatório Executivo Geral', marginX, currentY);
+
+      currentY += 6;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(100, 116, 139);
+      doc.text('Consolidação analítica de indicadores-chave e métricas auditadas', marginX, currentY);
+
+      // Filter notice if applied
+      if (filterSummary && filterSummary !== 'Completo' && filterSummary !== 'all') {
+        currentY += 6;
+        doc.setFillColor(240, 249, 255);
+        doc.setDrawColor(186, 230, 253);
+        doc.roundedRect(marginX, currentY - 4, usableWidth, 7, 1.5, 1.5, 'FD');
+        doc.setTextColor(2, 132, 199);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.text(`Filtros Ativos: ${filterSummary}`, marginX + 3, currentY + 0.8);
+      }
+
+      currentY += 10;
+
+      // 3. Key Performance Indicators (KPIs) Cards Section
+      const availableMetrics = metrics.filter(m => m.available).slice(0, 4);
+
+      if (availableMetrics.length > 0) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(30, 41, 59);
+        doc.text('INDICADORES PRINCIPAIS (KPIs)', marginX, currentY);
+        currentY += 4;
+
+        const kpiCount = availableMetrics.length;
+        const gap = 3;
+        const cardWidth = (usableWidth - (kpiCount - 1) * gap) / kpiCount;
+        const cardHeight = 22;
+
+        availableMetrics.forEach((m, idx) => {
+          const cardX = marginX + idx * (cardWidth + gap);
+
+          // Card Background & Border
+          doc.setFillColor(248, 250, 252); // slate-50
+          doc.setDrawColor(226, 232, 240); // slate-200
+          doc.roundedRect(cardX, currentY, cardWidth, cardHeight, 2, 2, 'FD');
+
+          // Left accent border line
+          doc.setFillColor(2, 132, 199);
+          doc.roundedRect(cardX, currentY, 1.5, cardHeight, 1, 1, 'F');
+
+          // Metric Label
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(7.5);
+          doc.setTextColor(100, 116, 139);
+          const cleanLabel = (m.label || 'INDICADOR').toUpperCase();
+          doc.text(cleanLabel.length > 22 ? cleanLabel.slice(0, 20) + '...' : cleanLabel, cardX + 4, currentY + 5.5);
+
+          // Metric Formatted Value
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(12);
+          doc.setTextColor(15, 23, 42);
+          doc.text(String(m.formattedValue || '0'), cardX + 4, currentY + 12);
+
+          // Percentage Variation (if present)
+          if (m.changePercent !== undefined) {
+            const isPos = m.changePercent >= 0;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7);
+            if (isPos) {
+              doc.setTextColor(22, 163, 74); // green
+              doc.text(`▲ +${m.changePercent}% vs período ant.`, cardX + 4, currentY + 18);
+            } else {
+              doc.setTextColor(220, 38, 38); // red
+              doc.text(`▼ ${m.changePercent}% vs período ant.`, cardX + 4, currentY + 18);
+            }
+          }
+        });
+
+        currentY += cardHeight + 10;
+      }
+
+      // 4. Detailed Data & Analytical Tables Section
+      if (charts.length > 0) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(30, 41, 59);
+        doc.text('DETALHAMENTO ANALÍTICO POR DIMENSÃO', marginX, currentY);
+        currentY += 4;
+
+        charts.forEach((c) => {
+          // If Y position is too close to bottom margin, add new page
+          if (currentY > pageHeight - 55) {
+            doc.addPage();
+            currentY = 26;
+          }
+
+          // Table Subtitle
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(9);
+          doc.setTextColor(15, 23, 42);
+          doc.text(c.config.title || 'Detalhamento de Métricas', marginX, currentY);
+          currentY += 2;
+
+          const dimHeader = c.config.xAxis || 'Dimensão';
+          const aggLabel = (c.config.aggregation || 'SOMA').toUpperCase();
+          const metricHeader = `${c.config.yAxis || 'Métrica'} (${aggLabel})`;
+
+          const tableRows = (c.data || []).map(row => [
+            String(row.dimension ?? 'N/A'),
+            typeof row.metric === 'number' ? formatNumberBR(row.metric, 2) : String(row.metric ?? '0'),
+          ]);
+
+          autoTable(doc, {
+            startY: currentY,
+            head: [[dimHeader, metricHeader]],
+            body: tableRows.length > 0 ? tableRows : [['Nenhum dado agregado', '0,00']],
+            theme: 'striped',
+            headStyles: {
+              fillColor: [2, 132, 199],
+              textColor: [255, 255, 255],
+              fontSize: 8.5,
+              fontStyle: 'bold',
+              cellPadding: 2.5,
+            },
+            alternateRowStyles: {
+              fillColor: [248, 250, 252],
+            },
+            bodyStyles: {
+              fontSize: 8,
+              textColor: [30, 41, 59],
+              cellPadding: 2,
+            },
+            columnStyles: {
+              0: { cellWidth: usableWidth * 0.65 },
+              1: { cellWidth: usableWidth * 0.35, halign: 'right', fontStyle: 'bold' },
+            },
+            margin: { left: marginX, right: marginX },
+          });
+
+          const lastTable = (doc as any).lastAutoTable;
+          currentY = (lastTable ? lastTable.finalY : currentY + 30) + 8;
+        });
+      }
+
+      // 5. Footers and Page Numbers across all generated pages
+      const totalPages = doc.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+
+        // Thin separator rule
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.3);
+        doc.line(marginX, pageHeight - 16, pageWidth - marginX, pageHeight - 16);
+
+        // Footer text
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(148, 163, 184); // slate-400
+        doc.text(
+          'Planilha Inteligente IA • Relatório executivo gerado a partir de dados auditados • Confidencial',
+          marginX,
+          pageHeight - 11
+        );
+
+        doc.text(
+          `Página ${i} de ${totalPages}`,
+          pageWidth - marginX,
+          pageHeight - 11,
+          { align: 'right' }
+        );
+
+        if (watermark) {
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(7);
+          doc.setTextColor(161, 161, 170);
+          doc.text('Benefício 1º Download Gratuito Aplicado', marginX, pageHeight - 7);
+        }
+      }
+
+      // 6. Generate Binary Blob and Trigger Real File Download
+      const pdfBlob = doc.output('blob');
+      const blobUrl = URL.createObjectURL(pdfBlob);
+
+      // Create native download anchor element
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.style.display = 'none';
+      downloadAnchor.href = blobUrl;
+      downloadAnchor.setAttribute('download', filename);
+      document.body.appendChild(downloadAnchor);
+
+      // Trigger download
+      downloadAnchor.click();
+
+      // Also call standard save as secondary safety
+      try {
+        doc.save(filename);
+      } catch (_) {
+        // Ignored if native click already handled
+      }
+
+      setTimeout(() => {
+        if (document.body.contains(downloadAnchor)) {
+          document.body.removeChild(downloadAnchor);
+        }
+        URL.revokeObjectURL(blobUrl);
+      }, 3000);
+
+      resolve({
+        success: true,
+        filename,
+        sizeBytes: pdfBlob.size,
+      });
+    } catch (err: any) {
+      console.error('[downloadExecutivePdfReport] Falha ao gerar PDF:', err);
+      reject(err);
+    }
+  });
+}
+
+/**
+ * Backward compatibility wrapper that generates and downloads the executive PDF report
  */
 export function printExecutiveReport(
   dashboardTitle: string,
@@ -51,128 +352,8 @@ export function printExecutiveReport(
   filterSummary: string,
   watermark = false
 ) {
-
-  const nowBR = new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'full',
-    timeStyle: 'short',
-  }).format(new Date());
-
-  const metricsHtml = metrics
-    .filter(m => m.available)
-    .map(
-      m => `
-      <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; background: #f8fafc; flex: 1; min-width: 140px;">
-        <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">${m.label}</div>
-        <div style="font-size: 20px; font-weight: bold; color: #0f172a; margin-top: 4px;">${m.formattedValue}</div>
-        ${m.changePercent !== undefined ? `<div style="font-size: 11px; color: ${m.changePercent >= 0 ? '#16a34a' : '#dc2626'}; margin-top: 4px;">${m.changePercent >= 0 ? '▲ +' : '▼ '}${m.changePercent}% vs período anterior</div>` : ''}
-      </div>`
-    )
-    .join('');
-
-  const chartsHtml = charts
-    .map(
-      c => `
-      <div style="margin-top: 24px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; page-break-inside: avoid;">
-        <h3 style="margin: 0 0 12px 0; font-size: 15px; color: #1e293b;">${c.config.title}</h3>
-        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-          <thead>
-            <tr style="background: #f1f5f9; text-align: left;">
-              <th style="padding: 8px; border-bottom: 1px solid #cbd5e1;">${c.config.xAxis}</th>
-              <th style="padding: 8px; border-bottom: 1px solid #cbd5e1; text-align: right;">${c.config.yAxis} (${c.config.aggregation.toUpperCase()})</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${c.data
-              .map(
-                d => `
-              <tr>
-                <td style="padding: 6px 8px; border-bottom: 1px solid #f1f5f9;">${d.dimension}</td>
-                <td style="padding: 6px 8px; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 600;">${formatNumberBR(d.metric, 2)}</td>
-              </tr>`
-              )
-              .join('')}
-          </tbody>
-        </table>
-      </div>`
-    )
-    .join('');
-
-  const htmlContent = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Relatório Executivo — ${dashboardTitle}</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #0f172a; margin: 40px; }
-    h1 { margin: 0 0 4px 0; font-size: 24px; color: #0f172a; }
-    .header { border-bottom: 2px solid #0284c7; padding-bottom: 16px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-end; }
-    .subtitle { color: #64748b; font-size: 13px; }
-    .metrics-grid { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
-    .footer { margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 12px; font-size: 11px; color: #94a3b8; display: flex; justify-content: space-between; }
-    .watermark { position: fixed; bottom: 20px; right: 30px; font-size: 11px; color: #cbd5e1; }
-    @media print {
-      body { margin: 20mm; }
-      @page { margin: 0; }
-    }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div>
-      <h1>${dashboardTitle}</h1>
-      <div class="subtitle">Relatório Executivo Automatizado • Planilha Inteligente IA</div>
-      ${filterSummary ? `<div style="font-size: 12px; color: #0284c7; margin-top: 4px;">Filtros Aplicados: ${filterSummary}</div>` : ''}
-    </div>
-    <div style="text-align: right; font-size: 12px; color: #64748b;">
-      Emitido em:<br><strong>${nowBR}</strong>
-    </div>
-  </div>
-
-  <h2 style="font-size: 16px; margin: 0 0 12px 0; color: #334155;">Indicadores Principais (KPIs)</h2>
-  <div class="metrics-grid">
-    ${metricsHtml}
-  </div>
-
-  <h2 style="font-size: 16px; margin: 24px 0 12px 0; color: #334155;">Detalhamento das Métricas</h2>
-  ${chartsHtml}
-
-  <div class="footer">
-    <div>Planilha Inteligente IA — Relatório confidencial gerado a partir de dados auditados.</div>
-    <div>Página 1 de 1</div>
-  </div>
-
-  ${watermark ? '<div class="watermark">Gerado no Plano Gratuito de Planilha Inteligente IA</div>' : ''}
-</body>
-</html>
-`;
-
-  try {
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow?.document;
-    if (doc) {
-      doc.open();
-      doc.write(htmlContent);
-      doc.close();
-      iframe.contentWindow?.focus();
-      setTimeout(() => {
-        iframe.contentWindow?.print();
-        setTimeout(() => {
-          if (document.body.contains(iframe)) {
-            document.body.removeChild(iframe);
-          }
-        }, 3000);
-      }, 500);
-    }
-  } catch (e) {
-    console.error('Falha ao acionar impressão do relatório:', e);
-  }
+  // Directly trigger real PDF file download
+  downloadExecutivePdfReport(dashboardTitle, metrics, charts, filterSummary, watermark).catch((err) => {
+    console.error('Falha ao exportar PDF executivo:', err);
+  });
 }

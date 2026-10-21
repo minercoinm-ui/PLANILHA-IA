@@ -126,8 +126,8 @@ export async function downloadVideoWithVerification(options: DownloadVideoOption
     const fullError =
       response.status === 404
         ? 'Vídeo indisponível ou expirado no servidor.'
-        : response.status === 403
-        ? 'Acesso não autorizado. Plano Premium obrigatório para baixar vídeos.'
+        : response.status === 403 || response.status === 402
+        ? 'Pagamento via Pix não confirmado para baixar este vídeo.'
         : `Falha ao baixar o arquivo: ${serverMessage}`;
 
     onProgress?.({ state: 'error', message: fullError });

@@ -54,8 +54,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       a: 'O Analista IA utiliza o modelo Gemini 3.8 Flash integrado ao servidor para responder dúvidas em português sobre seus números reais, apontar variações entre períodos, identificar produtos mais rentáveis e sugerir gráficos adicionais.',
     },
     {
-      q: 'Como funciona o pagamento da assinatura?',
-      a: 'A assinatura do Plano Premium custa R$ 29,90 por mês e é processada de forma 100% segura pelo Mercado Pago. Você pode cancelar a qualquer momento sem burocracia.',
+      q: 'Como funcionam os pagamentos dos relatórios e vídeos?',
+      a: 'Nosso modelo é 100% transparente e sem assinaturas: o seu 1º download de relatório executivo em PDF é gratuito. Downloads adicionais de PDF custam apenas R$ 4,90 via Pix, e a renderização de vídeos animados Full HD em 1080p custa R$ 14,90 por vídeo via Pix. Sem mensalidades ou contratos.',
     },
     {
       q: 'Posso atualizar o dashboard quando tiver uma nova planilha?',
@@ -264,47 +264,50 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 mb-2">
-              Planos Transparentes
+              Preços Transparentes
             </h2>
             <h3 className="text-3xl font-extrabold text-slate-900 dark:text-white">
-              Comece grátis, faça upgrade quando crescer
+              Pague apenas pelo que utilizar • Sem assinaturas
             </h3>
             <p className="text-slate-500 text-sm mt-2">
-              Sem contratos de longo prazo. Pagamento seguro via Mercado Pago.
+              Cobranças avulsas instantâneas via Pix Mercado Pago. Sem renovação automática.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
-            {/* Free Plan */}
+            {/* Free 1st PDF Card */}
             <div className="p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between shadow-xs">
               <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Plano Gratuito</span>
+                <div className="inline-block px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 mb-3">
+                  1º DOWNLOAD GRATUITO
+                </div>
+                <h4 className="text-xl font-bold text-slate-900 dark:text-white">Relatório Executivo PDF</h4>
                 <div className="mt-4 flex items-baseline gap-1">
                   <span className="text-4xl font-black text-slate-900 dark:text-white">R$ 0</span>
-                  <span className="text-xs text-slate-500">/mês para sempre</span>
+                  <span className="text-xs text-slate-500">(1º relatório cortesia)</span>
                 </div>
-                <p className="text-xs text-slate-500 mt-2">Ideal para experimentar e criar os primeiros dashboards com seus dados reais.</p>
+                <p className="text-xs text-slate-500 mt-2">Experimente a exportação executiva sem custo algum no seu primeiro relatório.</p>
 
                 <ul className="mt-6 space-y-3 text-xs text-slate-700 dark:text-slate-300">
                   <li className="flex items-center gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                    Até 3 importações de planilhas por mês
+                    <strong>1º download de PDF 100% grátis</strong> por visitante
                   </li>
                   <li className="flex items-center gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                    Arquivos de até 5 MB (.xlsx, .xls, .csv)
+                    PDFs adicionais por apenas <strong>R$ 4,90</strong> via Pix
                   </li>
                   <li className="flex items-center gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                    Até 2 dashboards salvos
+                    Layout executivo com KPIs, cabeçalho e gráficos
                   </li>
                   <li className="flex items-center gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                    5 perguntas mensais ao Analista IA
+                    Exportação em CSV tratada para Excel sempre gratuita
                   </li>
                   <li className="flex items-center gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                    Filtros por período e categorias
+                    Sem cadastros longos ou contratos
                   </li>
                 </ul>
               </div>
@@ -313,57 +316,54 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 onClick={onOpenImport}
                 className="mt-8 w-full py-3 text-xs font-bold text-slate-800 dark:text-white bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl transition-colors"
               >
-                Usar Plano Gratuito
+                Importar Minha Planilha Grátis
               </button>
             </div>
 
-            {/* Premium Plan */}
-            <div className="p-8 rounded-3xl bg-gradient-to-b from-blue-900/10 via-white to-white dark:from-blue-950/40 dark:via-slate-900 dark:to-slate-900 border-2 border-blue-600 rounded-3xl flex flex-col justify-between shadow-xl relative">
+            {/* Video Render Card */}
+            <div className="p-8 rounded-3xl bg-gradient-to-b from-blue-900/10 via-white to-white dark:from-blue-950/40 dark:via-slate-900 dark:to-slate-900 border-2 border-blue-600 flex flex-col justify-between shadow-xl relative">
               <div className="absolute -top-3 right-8 bg-blue-600 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider shadow-md">
-                Recomendado
+                Full HD 1080p
               </div>
 
               <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">Plano Premium</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">Renderização em Nuvem</span>
+                <h4 className="text-xl font-bold text-slate-900 dark:text-white mt-1">Vídeo Animado Executivo</h4>
                 <div className="mt-4 flex items-baseline gap-1">
-                  <span className="text-4xl font-black text-slate-900 dark:text-white">R$ 29,90</span>
-                  <span className="text-xs text-slate-500">/mês via Mercado Pago</span>
+                  <span className="text-4xl font-black text-slate-900 dark:text-white">R$ 14,90</span>
+                  <span className="text-xs text-slate-500">por vídeo gerado via Pix</span>
                 </div>
-                <p className="text-xs text-slate-500 mt-2">Para profissionais, consultores e empresas que demandam análises contínuas.</p>
+                <p className="text-xs text-slate-500 mt-2">Vídeo animado de 15 segundos para apresentações executivas, reuniões e conselhos.</p>
 
                 <ul className="mt-6 space-y-3 text-xs text-slate-700 dark:text-slate-300">
                   <li className="flex items-center gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
-                    <strong>Importações ilimitadas</strong> de planilhas
+                    Resolução <strong>1920 × 1080 Full HD</strong> (30 FPS)
                   </li>
                   <li className="flex items-center gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
-                    Arquivos grandes de até <strong>25 MB</strong>
+                    Transcodificação H.264 Main Profile compatível com Windows
                   </li>
                   <li className="flex items-center gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
-                    Dashboards salvos ilimitados
+                    Formatos <strong>MP4 e WebM</strong> com áudio estéreo integrado
                   </li>
                   <li className="flex items-center gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
-                    <strong>200 perguntas/mês</strong> com o Analista IA
+                    Download verificado com validação de bytes binários
                   </li>
                   <li className="flex items-center gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
-                    Exportação em PDF Executivo e CSV sem marca d'água
-                  </li>
-                  <li className="flex items-center gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
-                    Atualização inteligente de dados sem perder gráficos
+                    Liberação instantânea via Pix com QR Code e Copia e Cola
                   </li>
                 </ul>
               </div>
 
               <button
-                onClick={onOpenPricing}
+                onClick={onOpenImport}
                 className="mt-8 w-full py-3 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 transition-all"
               >
-                <Zap className="w-4 h-4 fill-current" /> Assinar Premium por R$ 29,90/mês
+                <Sparkles className="w-4 h-4" /> Criar Vídeo com Meus Dados
               </button>
             </div>
           </div>

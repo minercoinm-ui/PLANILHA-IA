@@ -1,0 +1,14 @@
+{
+  "vis_16d5bfd70aab166756e042e7839aaa72": {
+    "visitorId": "vis_16d5bfd70aab166756e042e7839aaa72",
+    "claimedAt": "2026-10-21T17:06:43.379Z",
+    "ip": "127.0.0.1",
+    "userAgent": "curl/7.88.1"
+  },
+  "vis_test_quota_1792605045": {
+    "visitorId": "vis_test_quota_1792605045",
+    "claimedAt": "2026-10-21T17:50:45.515Z",
+    "ip": "127.0.0.1",
+    "userAgent": "curl/7.88.1"
+  }
+}

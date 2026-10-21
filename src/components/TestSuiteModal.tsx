@@ -20,6 +20,9 @@ import {
   appendWithDeduplication,
   aggregateData,
 } from '../lib/dataProcessor';
+import { downloadExecutivePdfReport } from '../lib/exportUtils';
+import { ChartConfig } from '../types';
+import { apiFetch } from '../lib/visitorId';
 
 interface TestSuiteModalProps {
   isOpen: boolean;
@@ -100,9 +103,15 @@ export const TestSuiteModal: React.FC<TestSuiteModalProps> = ({ isOpen, onClose 
       status: 'pending',
     },
     {
-      id: 'plan_limits',
-      name: 'Limites Reais de Plano no Backend',
-      description: 'Verifica restrições de importações (Free: 3 vs Premium: 100) e consultas de IA.',
+      id: 'pdf_eligibility',
+      name: 'Elegibilidade do 1º PDF Gratuito & Preços',
+      description: 'Valida se o backend retorna elegibilidade para o 1º PDF gratuito e preços configurados.',
+      status: 'pending',
+    },
+    {
+      id: 'pdf_generation',
+      name: 'Geração e Download de Relatório PDF (.pdf)',
+      description: 'Valida motor de geração jsPDF, tabelas analíticas, formatação A4 e download de arquivo binário.',
       status: 'pending',
     },
     {
@@ -246,16 +255,44 @@ export const TestSuiteModal: React.FC<TestSuiteModalProps> = ({ isOpen, onClose 
         if (catA !== 300) throw new Error(`Esperado 300 para soma da cat A, obteve ${catA}`);
         break;
       }
-      case 'plan_limits': {
-        const res = await fetch('/api/auth/me');
+      case 'pdf_eligibility': {
+        const res = await apiFetch('/api/pdf/eligibility');
         const data = await res.json();
-        if (!data.limits || !data.limits.maxImportsPerMonth) {
-          throw new Error('Backend não retornou limites do plano');
+        if (typeof data.hasFreePdfRemaining !== 'boolean' || typeof data.price !== 'number') {
+          throw new Error('Backend não retornou dados de elegibilidade ou preço');
+        }
+        break;
+      }
+      case 'pdf_generation': {
+        const testMetrics = [
+          { id: 'm1', key: 'faturamento', label: 'Faturamento Total', value: 125000, formattedValue: 'R$ 125.000,00', available: true, changePercent: 12.5 },
+          { id: 'm2', key: 'pedidos', label: 'Total de Pedidos', value: 340, formattedValue: '340', available: true },
+        ];
+        const testCharts = [
+          {
+            config: {
+              id: 'c1',
+              title: 'Vendas por Região',
+              type: 'bar' as const,
+              xAxis: 'Região',
+              yAxis: 'Vendas',
+              aggregation: 'sum' as const,
+              colorPalette: 'blue' as const,
+            },
+            data: [
+              { dimension: 'Sudeste', metric: 75000 },
+              { dimension: 'Sul', metric: 50000 },
+            ],
+          },
+        ];
+        const result = await downloadExecutivePdfReport('Teste_Auditoria', testMetrics, testCharts, 'Filtro Teste', false);
+        if (!result.success || !result.filename.endsWith('.pdf') || result.sizeBytes < 1000) {
+          throw new Error('Falha ao gerar arquivo binário PDF (.pdf) válido');
         }
         break;
       }
       case 'mercadopago_webhook': {
-        const res = await fetch('/api/mercadopago/webhook', {
+        const res = await fetch('/api/payment/webhook', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

@@ -10,8 +10,11 @@ import ffmpegPath from 'ffmpeg-static';
 import ffprobePath from 'ffprobe-static';
 
 const execAsync = util.promisify(exec);
-const FFMPEG_PATH = ffmpegPath || 'ffmpeg';
-const FFPROBE_PATH = ffprobePath.path || 'ffprobe';
+// ffmpeg-static is bundled with the app; never depend on a system-level `ffmpeg`.
+const FFMPEG_PATH = ffmpegPath;
+const FFPROBE_PATH = ffprobePath.path;
+const FFMPEG_BIN = FFMPEG_PATH ? JSON.stringify(FFMPEG_PATH) : '';
+const FFPROBE_BIN = FFPROBE_PATH ? JSON.stringify(FFPROBE_PATH) : '';
 
 dotenv.config();
 
@@ -851,10 +854,10 @@ async function executeFfmpegPipeline(
     let ffmpegCmd = '';
     if (targetFormat === 'mp4') {
       // Full HD 1080p, H.264 Main profile level 4.1, yuv420p for 100% universal Windows Media Player / Windows 10/11 Filmes e TV compatibility (fixes 0xC00D36C4 error by adding compliant stereo AAC audio and BT.709 color metadata)
-      ffmpegCmd = `${FFMPEG_PATH} -y -i "${tempInputPath}" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,format=yuv420p" -c:v libx264 -profile:v main -level 4.1 -preset fast -crf 20 -pix_fmt yuv420p -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv -avoid_negative_ts make_zero -c:a aac -b:a 128k -ar 44100 -ac 2 -t 15 -shortest -movflags +faststart "${finalOutputPath}"`;
+      ffmpegCmd = `${FFMPEG_BIN} -y -i "${tempInputPath}" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,format=yuv420p" -c:v libx264 -profile:v main -level 4.1 -preset fast -crf 20 -pix_fmt yuv420p -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv -avoid_negative_ts make_zero -c:a aac -b:a 128k -ar 44100 -ac 2 -t 15 -shortest -movflags +faststart "${finalOutputPath}"`;
     } else {
       // WebM VP9 in 1080p with silent opus audio stream for universal players
-      ffmpegCmd = `${FFMPEG_PATH} -y -i "${tempInputPath}" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=48000 -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,format=yuv420p" -c:v libvpx-vp9 -b:v 3500k -pix_fmt yuv420p -avoid_negative_ts make_zero -c:a libopus -b:a 128k -ar 48000 -t 15 -shortest "${finalOutputPath}"`;
+      ffmpegCmd = `${FFMPEG_BIN} -y -i "${tempInputPath}" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=48000 -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,format=yuv420p" -c:v libvpx-vp9 -b:v 3500k -pix_fmt yuv420p -avoid_negative_ts make_zero -c:a libopus -b:a 128k -ar 48000 -t 15 -shortest "${finalOutputPath}"`;
     }
 
     console.log(`[Video Pipeline] Executing FFmpeg command for job ${jobId}...`);
@@ -874,7 +877,7 @@ async function executeFfmpegPipeline(
     }
 
     // Inspect file integrity with ffprobe
-    const probeCmd = `${FFPROBE_PATH} -v error -select_streams v:0 -show_entries stream=width,height,codec_name -show_entries format=duration -of json "${finalOutputPath}"`;
+    const probeCmd = `${FFPROBE_BIN} -v error -select_streams v:0 -show_entries stream=width,height,codec_name -show_entries format=duration -of json "${finalOutputPath}"`;
     const { stdout: probeOutput } = await execAsync(probeCmd);
     const probeData = JSON.parse(probeOutput || '{}');
 
@@ -907,9 +910,9 @@ async function executeFfmpegPipeline(
         if (!fs.existsSync(altOutputPath)) {
           let companionCmd = '';
           if (altFormat === 'webm') {
-            companionCmd = `${FFMPEG_PATH} -y -i "${finalOutputPath}" -c:v libvpx-vp9 -b:v 3500k -pix_fmt yuv420p -avoid_negative_ts make_zero -c:a libopus -b:a 128k -ar 48000 -t 15 -shortest "${altOutputPath}"`;
+            companionCmd = `${FFMPEG_BIN} -y -i "${finalOutputPath}" -c:v libvpx-vp9 -b:v 3500k -pix_fmt yuv420p -avoid_negative_ts make_zero -c:a libopus -b:a 128k -ar 48000 -t 15 -shortest "${altOutputPath}"`;
           } else {
-            companionCmd = `${FFMPEG_PATH} -y -i "${finalOutputPath}" -c:v libx264 -profile:v main -level 4.1 -preset fast -crf 20 -pix_fmt yuv420p -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv -avoid_negative_ts make_zero -c:a aac -b:a 128k -ar 44100 -ac 2 -shortest -movflags +faststart "${altOutputPath}"`;
+            companionCmd = `${FFMPEG_BIN} -y -i "${finalOutputPath}" -c:v libx264 -profile:v main -level 4.1 -preset fast -crf 20 -pix_fmt yuv420p -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv -avoid_negative_ts make_zero -c:a aac -b:a 128k -ar 44100 -ac 2 -shortest -movflags +faststart "${altOutputPath}"`;
           }
           await execAsync(companionCmd);
           syncVideoStorageFromDisk();
@@ -1131,9 +1134,9 @@ app.get('/api/video/download/:id', async (req: Request, res: Response) => {
       try {
         let convertCmd = '';
         if (targetFormat === 'mp4') {
-          convertCmd = `${FFMPEG_PATH} -y -i "${altPath}" -c:v libx264 -profile:v main -level 4.1 -preset fast -crf 20 -pix_fmt yuv420p -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv -avoid_negative_ts make_zero -c:a aac -b:a 128k -ar 44100 -ac 2 -shortest -movflags +faststart "${targetPath}"`;
+          convertCmd = `${FFMPEG_BIN} -y -i "${altPath}" -c:v libx264 -profile:v main -level 4.1 -preset fast -crf 20 -pix_fmt yuv420p -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv -avoid_negative_ts make_zero -c:a aac -b:a 128k -ar 44100 -ac 2 -shortest -movflags +faststart "${targetPath}"`;
         } else {
-          convertCmd = `${FFMPEG_PATH} -y -i "${altPath}" -c:v libvpx-vp9 -b:v 3500k -pix_fmt yuv420p -avoid_negative_ts make_zero -c:a libopus -b:a 128k -ar 48000 -t 15 -shortest "${targetPath}"`;
+          convertCmd = `${FFMPEG_BIN} -y -i "${altPath}" -c:v libvpx-vp9 -b:v 3500k -pix_fmt yuv420p -avoid_negative_ts make_zero -c:a libopus -b:a 128k -ar 48000 -t 15 -shortest "${targetPath}"`;
         }
         await execAsync(convertCmd);
         syncVideoStorageFromDisk();

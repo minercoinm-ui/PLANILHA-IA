@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import util from 'util';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
@@ -10,11 +10,16 @@ import ffmpegPath from 'ffmpeg-static';
 import ffprobePath from 'ffprobe-static';
 
 const execAsync = util.promisify(exec);
+const execFileAsync = util.promisify(execFile);
 // ffmpeg-static is bundled with the app; never depend on a system-level `ffmpeg`.
-const FFMPEG_PATH = ffmpegPath;
-const FFPROBE_PATH = ffprobePath.path;
+const FFMPEG_PATH = ffmpegPath || process.env.FFMPEG_PATH;
+const FFPROBE_PATH = ffprobePath.path || process.env.FFPROBE_PATH;
 const FFMPEG_BIN = FFMPEG_PATH ? JSON.stringify(FFMPEG_PATH) : '';
 const FFPROBE_BIN = FFPROBE_PATH ? JSON.stringify(FFPROBE_PATH) : '';
+
+if (!FFMPEG_PATH || !FFPROBE_PATH) {
+  console.error('[Video Pipeline] FFmpeg/FFprobe executable is unavailable. Install ffmpeg-static and ffprobe-static or configure FFMPEG_PATH/FFPROBE_PATH.');
+}
 
 dotenv.config();
 
@@ -851,17 +856,31 @@ async function executeFfmpegPipeline(
     job.status = 'rendering';
     job.progressPercent = 50;
 
-    let ffmpegCmd = '';
-    if (targetFormat === 'mp4') {
-      // Full HD 1080p, H.264 Main profile level 4.1, yuv420p for 100% universal Windows Media Player / Windows 10/11 Filmes e TV compatibility (fixes 0xC00D36C4 error by adding compliant stereo AAC audio and BT.709 color metadata)
-      ffmpegCmd = `${FFMPEG_BIN} -y -i "${tempInputPath}" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,format=yuv420p" -c:v libx264 -profile:v main -level 4.1 -preset fast -crf 20 -pix_fmt yuv420p -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv -avoid_negative_ts make_zero -c:a aac -b:a 128k -ar 44100 -ac 2 -t 15 -shortest -movflags +faststart "${finalOutputPath}"`;
-    } else {
-      // WebM VP9 in 1080p with silent opus audio stream for universal players
-      ffmpegCmd = `${FFMPEG_BIN} -y -i "${tempInputPath}" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=48000 -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,format=yuv420p" -c:v libvpx-vp9 -b:v 3500k -pix_fmt yuv420p -avoid_negative_ts make_zero -c:a libopus -b:a 128k -ar 48000 -t 15 -shortest "${finalOutputPath}"`;
+    if (!FFMPEG_PATH) {
+      throw new Error('FFmpeg não está disponível no ambiente de produção.');
     }
 
-    console.log(`[Video Pipeline] Executing FFmpeg command for job ${jobId}...`);
-    await execAsync(ffmpegCmd);
+    const videoFilter = 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,format=yuv420p';
+    const ffmpegArgs = targetFormat === 'mp4'
+      ? [
+          '-y', '-i', tempInputPath,
+          '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+          '-vf', videoFilter, '-c:v', 'libx264', '-profile:v', 'main', '-level', '4.1',
+          '-preset', 'fast', '-crf', '20', '-pix_fmt', 'yuv420p', '-colorspace', 'bt709',
+          '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv',
+          '-avoid_negative_ts', 'make_zero', '-c:a', 'aac', '-b:a', '128k', '-ar', '44100',
+          '-ac', '2', '-t', '15', '-shortest', '-movflags', '+faststart', finalOutputPath,
+        ]
+      : [
+          '-y', '-i', tempInputPath,
+          '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000',
+          '-vf', videoFilter, '-c:v', 'libvpx-vp9', '-b:v', '3500k', '-pix_fmt', 'yuv420p',
+          '-avoid_negative_ts', 'make_zero', '-c:a', 'libopus', '-b:a', '128k', '-ar', '48000',
+          '-t', '15', '-shortest', finalOutputPath,
+        ];
+
+    console.log(`[Video Pipeline] Executing bundled FFmpeg for job ${jobId}: ${FFMPEG_PATH}`);
+    await execFileAsync(FFMPEG_PATH, ffmpegArgs, { maxBuffer: 10 * 1024 * 1024 });
 
     // 3. Finalizing & Verification State with FFprobe
     job.status = 'finalizing';
